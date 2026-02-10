@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi import FastAPI
 import json
 import httpx
