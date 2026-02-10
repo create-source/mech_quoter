@@ -9,7 +9,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 
   <link rel="stylesheet" href="/static/style.css">
-  <script defer src="/static/app.js"></script>
+  <script src="/static/app.js" defer></script>
 </head>
 
 <body>
@@ -50,14 +50,14 @@
     <select id="model"></select>
 
     <!-- CATEGORY -->
-    <label for="category">Category</label>
-    <select id="category"></select>
+    <label for="categorySearch">Category</label>
+    <input id="categorySearch" list="categoryList" placeholder="Type a category..." />
     <datalist id="categoryList"></datalist>
     <input id="category" type="hidden" />
 
     <!-- SERVICE -->
-    <label for="service">Service</label>
-    <select id="service"></select>
+    <label for="serviceSearch">Service</label>
+    <input id="serviceSearch" list="serviceList" placeholder="Type a service..." />
     <datalist id="serviceList"></datalist>
     <input id="service" type="hidden" />
 
