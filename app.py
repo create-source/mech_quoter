@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi import FastAPI, HTTPException
 import json
 import httpx
@@ -10,7 +10,7 @@ import math
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-CATALOG_PATH = Path(__file__).parent / "services_catalog.json"
+CATALOG_PATH = BASE_DIR / "services_catalog.json"
 
 app = FastAPI(title="Personal Repair Estimate API", version="0.1")
 
