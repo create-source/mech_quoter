@@ -8,34 +8,30 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
-
-# --- Paths (everything expected to live next to this app.py) ---
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_HTML = BASE_DIR / "index.html"
 CATALOG_PATH = BASE_DIR / "services_catalog.json"
 STATIC_DIR = BASE_DIR / "static"
 
-# Serve /static/style.css and /static/app.js
+app = FastAPI(title="Repair Estimator", version="1.0")
+
+
+# Serve /static/*
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# --- Catalog loader (cached) ---
+
+# ---------- Catalog loading (cached) ----------
 _catalog_cache: Optional[Dict[str, Any]] = None
 
 
 def _load_catalog() -> Dict[str, Any]:
-    """Loads services_catalog.json from same folder as app.py. Caches JSON in memory."""
     global _catalog_cache
-
     if _catalog_cache is not None:
         return _catalog_cache
 
     if not CATALOG_PATH.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Missing services_catalog.json next to app.py",
-        )
+        raise HTTPException(status_code=500, detail="Missing services_catalog.json next to app.py")
 
     try:
         _catalog_cache = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
@@ -50,18 +46,17 @@ def _load_catalog() -> Dict[str, Any]:
 
 def _iter_rows(catalog: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Tries to find a list of "rows/items" inside the catalog regardless of key naming.
-    Supports common shapes:
-      - {"items":[...]} or {"services":[...]} or {"rows":[...]} or {"data":[...]} or {"catalog":[...]}
-      - or the file might already be a list (rare) — then return it
+    Tries to find a list of rows/items inside the catalog regardless of key naming.
+    Supports common shapes like:
+      {"items":[...]} or {"services":[...]} or {"catalog":[...]} or {"rows":[...]} or {"data":[...]}
+    If the whole file is already a list, you can adjust here, but we expect dict root.
     """
-    # Most common:
-    for key in ("items", "services", "rows", "data", "catalog"):
-        val = catalog.get(key)
-        if isinstance(val, list):
-            return [x for x in val if isinstance(x, dict)]
+    for key in ("items", "services", "catalog", "rows", "data"):
+        v = catalog.get(key)
+        if isinstance(v, list) and all(isinstance(x, dict) for x in v):
+            return v
 
-    # Otherwise: find first list-of-dicts anywhere in the top-level dict
+    # fallback: first list-of-dicts value
     for v in catalog.values():
         if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
             return v
@@ -74,14 +69,10 @@ def _norm(s: Optional[str]) -> str:
 
 
 def _get_vehicle_fields(row: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """
-    Extract vehicle_type/year/make/model using multiple possible key names.
-    """
     vehicle_type = row.get("vehicle_type") or row.get("vehicleType") or row.get("type")
     year = row.get("year") or row.get("vehicle_year") or row.get("vehicleYear")
     make = row.get("make") or row.get("vehicle_make") or row.get("vehicleMake")
     model = row.get("model") or row.get("vehicle_model") or row.get("vehicleModel")
-
     return (
         _norm(str(vehicle_type)) if vehicle_type is not None else None,
         _norm(str(year)) if year is not None else None,
@@ -91,23 +82,14 @@ def _get_vehicle_fields(row: Dict[str, Any]) -> Tuple[Optional[str], Optional[st
 
 
 def _get_service_fields(row: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    Extract category and service name using multiple possible key names.
-    """
     category = (
         row.get("category")
         or row.get("service_category")
         or row.get("serviceCategory")
+        or row.get("group")
         or ""
     )
-    service = (
-        row.get("service")
-        or row.get("name")
-        or row.get("service_name")
-        or row.get("serviceName")
-        or ""
-    )
-
+    service = row.get("service") or row.get("name") or row.get("service_name") or row.get("serviceName") or ""
     return _norm(str(category)), _norm(str(service))
 
 
@@ -120,7 +102,7 @@ def _matches_vehicle_filter(
 ) -> bool:
     r_type, r_year, r_make, r_model = _get_vehicle_fields(row)
 
-    # If the row doesn't have a field, treat as generic and allow it.
+    # If a field isn't present in the row, treat it as "generic" and allow it.
     if vehicle_type and r_type and r_type.lower() != vehicle_type.lower():
         return False
     if year and r_year and r_year != year:
@@ -129,27 +111,26 @@ def _matches_vehicle_filter(
         return False
     if model and r_model and r_model.lower() != model.lower():
         return False
-
     return True
 
 
-# --- Routes ---
+# ---------- Routes ----------
 @app.get("/")
-def home() -> FileResponse:
-    if not INDEX_HTML.exists():
-        raise HTTPException(status_code=500, detail="Missing index.html next to app.py")
-    return FileResponse(str(INDEX_HTML))
+def home():
+    if INDEX_HTML.exists():
+        return FileResponse(str(INDEX_HTML))
+    raise HTTPException(status_code=500, detail="Missing index.html next to app.py")
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
+def health():
     return {"status": "ok"}
 
 
 @app.get("/vehicle/years")
 def vehicle_years(
     vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
+):
     catalog = _load_catalog()
     rows = _iter_rows(catalog)
 
@@ -160,8 +141,8 @@ def vehicle_years(
             if r_year:
                 years.add(r_year)
 
-    # Fallback if your catalog doesn't include years
     if not years:
+        # reasonable fallback
         years = {str(y) for y in range(1980, 2027)}
 
     return JSONResponse(sorted(years, key=lambda x: int(x) if x.isdigit() else 999999))
@@ -171,7 +152,7 @@ def vehicle_years(
 def vehicle_makes(
     year: Optional[str] = Query(default=None),
     vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
+):
     catalog = _load_catalog()
     rows = _iter_rows(catalog)
 
@@ -190,7 +171,7 @@ def vehicle_models(
     year: Optional[str] = Query(default=None),
     make: Optional[str] = Query(default=None),
     vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
+):
     catalog = _load_catalog()
     rows = _iter_rows(catalog)
 
@@ -210,16 +191,16 @@ def categories(
     make: Optional[str] = Query(default=None),
     model: Optional[str] = Query(default=None),
     vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
+):
     catalog = _load_catalog()
     rows = _iter_rows(catalog)
 
     cats: Set[str] = set()
     for row in rows:
         if _matches_vehicle_filter(row, vehicle_type=vehicle_type, year=year, make=make, model=model):
-            c, _ = _get_service_fields(row)
-            if c:
-                cats.add(c)
+            category, _ = _get_service_fields(row)
+            if category:
+                cats.add(category)
 
     return JSONResponse(sorted(cats))
 
@@ -231,15 +212,15 @@ def services(
     make: Optional[str] = Query(default=None),
     model: Optional[str] = Query(default=None),
     vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
+):
     catalog = _load_catalog()
     rows = _iter_rows(catalog)
 
-    svc: Set[str] = set()
+    svcs: Set[str] = set()
     for row in rows:
         if _matches_vehicle_filter(row, vehicle_type=vehicle_type, year=year, make=make, model=model):
-            c, s = _get_service_fields(row)
-            if c.lower() == category.lower() and s:
-                svc.add(s)
+            r_cat, r_svc = _get_service_fields(row)
+            if r_cat and r_cat.lower() == category.lower() and r_svc:
+                svcs.add(r_svc)
 
-    return JSONResponse(sorted(svc))
+    return JSONResponse(sorted(svcs))
