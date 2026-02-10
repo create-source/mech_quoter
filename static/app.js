@@ -1,5 +1,9 @@
 from pydantic import BaseModel
 from pathlib import Path
+
+ROOT = Path(__file__).parent
+root_index = ROOT / "index.html"
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException
@@ -21,15 +25,7 @@ if STATIC_DIR.exists():
 
 @app.get("/")
 def home():
-    static_index = STATIC_DIR / "index.html"
-    root_index = BASE_DIR / "index.html"
-
-    if static_index.exists():
-        return FileResponse(str(static_index))
-    if root_index.exists():
-        return FileResponse(str(root_index))
-
-    raise HTTPException(status_code=404, detail="index.html not found")
+    return FileResponse(str(root_index))
 
 
 
