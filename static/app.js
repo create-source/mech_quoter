@@ -1,330 +1,338 @@
+from pydantic import BaseModel
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+import json
+import httpx
+from datetime import datetime
+import math
 
-console.log("app.js loaded ✅");
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+CATALOG_PATH = BASE_DIR / "services_catalog.json"
 
-window.addEventListener("error", (e) => {
-  console.error("JS Error:", e.message, e.filename, e.lineno);
-});
+app = FastAPI(title="Personal Repair Estimate API", version="0.1")
 
-function el(id) {
-  return document.getElementById(id);
+# Serve static
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/")
+def home():
+    static_index = STATIC_DIR / "index.html"
+    root_index = BASE_DIR / "index.html"
+
+    if static_index.exists():
+        return FileResponse(str(static_index))
+    if root_index.exists():
+        return FileResponse(str(root_index))
+
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+
+@app.get("/favicon.ico")
+def favicon():
+    ico = STATIC_DIR / "favicon.ico"
+    if ico.exists():
+        return FileResponse(str(ico))
+    raise HTTPException(status_code=404, detail="favicon.ico not found")
+
+
+# ---------------- Catalog loading ----------------
+def load_catalog() -> dict:
+    if not CATALOG_PATH.exists():
+        raise RuntimeError(f"Missing {CATALOG_PATH.name} next to app.py")
+
+    data = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    cats = data.get("categories", [])
+    catalog = {}
+
+    for c in cats:
+        key = c.get("key")
+        name = c.get("name")
+        services = c.get("services", [])
+        if not key or not name:
+            continue
+
+        norm_services = []
+        for s in services:
+            code = s.get("code")
+            sname = s.get("name")
+            if not code or not sname:
+                continue
+            norm_services.append(s)
+
+        catalog[key] = {"name": name, "services": norm_services}
+
+    return catalog
+
+
+def get_catalog() -> dict:
+    # Reload every request so edits to JSON show up immediately while developing
+    try:
+        return load_catalog()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def find_service(catalog: dict, category_key: str, service_code: str) -> dict | None:
+    cat = catalog.get(category_key)
+    if not cat:
+        return None
+    for s in cat.get("services", []):
+        if s.get("code") == service_code:
+            return s
+    return None
+
+
+# ---------------- Pricing + multipliers ----------------
+DEFAULT_LABOR_RATE = 90.0  # your requested $90/hr
+LABOR_RATE_BY_ZIP: dict[str, float] = {
+    # optional overrides later:
+    # "92646": 95.0,
+}
+PARTS_TAX_RATE = 0.0775
+
+
+def money(x: float) -> float:
+    return round(float(x) + 1e-9, 2)
+
+
+def get_labor_rate(zip_code: str | None) -> float:
+    if not zip_code:
+        return DEFAULT_LABOR_RATE
+    return float(LABOR_RATE_BY_ZIP.get(str(zip_code), DEFAULT_LABOR_RATE))
+
+
+def vehicle_multiplier_from_inputs(vehicle_type: str | None, year: int | None, model: str | None) -> tuple[str, float]:
+    vt = (vehicle_type or "auto").lower().strip()
+    m = (model or "").upper()
+
+    # base by type
+    if vt in ("sedan", "car"):
+        base = 1.00
+        label = "sedan"
+    elif vt in ("suv", "cuv"):
+        base = 1.12
+        label = "suv"
+    elif vt in ("truck", "pickup"):
+        base = 1.20
+        label = "truck"
+    else:
+        # auto-detect
+        TRUCK_HINTS = ["F-150", "F150", "SILVERADO", "SIERRA", "RAM", "TUNDRA", "TACOMA", "RANGER", "FRONTIER", "TITAN"]
+        SUV_HINTS = ["4RUNNER", "RAV4", "HIGHLANDER", "PILOT", "CR-V", "CRV", "HR-V", "HRV", "EXPLORER",
+                     "TAHOE", "SUBURBAN", "YUKON", "PATHFINDER", "ROGUE"]
+        if any(h in m for h in TRUCK_HINTS):
+            base = 1.20
+            label = "truck"
+        elif any(h in m for h in SUV_HINTS):
+            base = 1.12
+            label = "suv"
+        else:
+            base = 1.00
+            label = "sedan"
+
+    # age tweak (small)
+    if year is not None:
+        if year <= 2005:
+            base *= 1.10
+        elif year >= 2020:
+            base *= 1.05
+
+    return label, round(base, 4)
+
+
+# ---------------- API: categories/services ----------------
+@app.get("/categories")
+def categories():
+    catalog = get_catalog()
+    out = []
+    for key, cat in catalog.items():
+        out.append(
+            {"key": key, "name": cat.get("name"), "count": len(cat.get("services", []))}
+        )
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+
+@app.get("/services/{category_key}")
+def services_for_category(category_key: str):
+    catalog = get_catalog()
+    cat = catalog.get(category_key)
+    if not cat:
+        raise HTTPException(status_code=404, detail=f"Unknown category '{category_key}'")
+
+    svcs = cat.get("services", [])
+    svcs_sorted = sorted(svcs, key=lambda s: (s.get("name") or "").lower())
+
+    # return full service objects (frontend can use hours + flat)
+    return svcs_sorted
+
+
+# ---------------- Estimate ----------------
+class EstimateIn(BaseModel):
+    zip_code: str | None = None
+    parts_price: float | None = 0.0
+
+    labor_pricing: str | None = "hourly"  # "hourly" or "flat"
+    vehicle_type: str | None = "auto"
+
+    year: int | None = None
+    make: str | None = None
+    model: str | None = None
+
+    category: str
+    service: str
+
+
+@app.post("/estimate")
+def estimate(payload: EstimateIn):
+    catalog = get_catalog()
+    svc = find_service(catalog, payload.category, payload.service)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found for that category")
+
+    parts_price = float(payload.parts_price or 0.0)
+    rate = get_labor_rate(payload.zip_code)
+
+    vehicle_label, mult = vehicle_multiplier_from_inputs(payload.vehicle_type, payload.year, payload.model)
+
+    # pull labor ranges
+    lh_min = float(svc.get("labor_hours_min", 0) or 0)
+    lh_max = float(svc.get("labor_hours_max", lh_min) or lh_min)
+
+    # fallback if missing
+    if lh_min <= 0 and lh_max <= 0:
+        lh_min = lh_max = 1.0
+    elif lh_min <= 0:
+        lh_min = lh_max
+    elif lh_max <= 0:
+        lh_max = lh_min
+
+    # apply multiplier to labor-hours
+    lh_min_eff = lh_min * mult
+    lh_max_eff = lh_max * mult
+
+    hourly_low = (rate * lh_min_eff) + parts_price
+    hourly_high = (rate * lh_max_eff) + parts_price
+
+    # flat-rate ranges (from JSON), also scale with multiplier
+    fr_min = float(svc.get("flat_rate_min") or 0.0)
+    fr_max = float(svc.get("flat_rate_max") or 0.0)
+
+    if fr_min <= 0 and fr_max <= 0:
+        fr_min = rate * lh_min
+        fr_max = rate * lh_max
+
+    fr_min_eff = fr_min * mult
+    fr_max_eff = fr_max * mult
+
+    flat_low = fr_min_eff + parts_price
+    flat_high = fr_max_eff + parts_price
+
+    mode = (payload.labor_pricing or "hourly").lower().strip()
+    if mode not in ("hourly", "flat"):
+        mode = "hourly"
+
+    est_low, est_high = (flat_low, flat_high) if mode == "flat" else (hourly_low, hourly_high)
+
+    # (optional) parts tax if you want it included:
+    # parts_tax = parts_price * PARTS_TAX_RATE
+    # est_low += parts_tax
+    # est_high += parts_tax
+
+    return {
+        "service_name": svc.get("name", payload.service),
+        "zip_code": payload.zip_code,
+        "labor_pricing": mode,
+
+        "labor_rate": money(rate),
+        "vehicle_type": vehicle_label,
+        "vehicle_multiplier": money(mult),
+
+        "labor_hours_min": money(lh_min_eff),
+        "labor_hours_max": money(lh_max_eff),
+
+        "flat_rate_min": money(fr_min_eff),
+        "flat_rate_max": money(fr_max_eff),
+
+        "parts_price_used": money(parts_price),
+
+        "estimate_low": money(est_low),
+        "estimate_high": money(est_high),
+    }
+
+
+# ---------------- Vehicle endpoints (vPIC) ----------------
+VPIC_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
+
+POPULAR_MAKES = {
+    "ACURA","AUDI","BMW","BUICK","CADILLAC","CHEVROLET","CHRYSLER","DODGE","FORD","GMC",
+    "HONDA","HYUNDAI","INFINITI","JEEP","KIA","LEXUS","LINCOLN","MAZDA","MERCEDES-BENZ",
+    "MINI","MITSUBISHI","NISSAN","RAM","SUBARU","TESLA","TOYOTA","VOLKSWAGEN","VOLVO",
+    "PORSCHE","LAND ROVER","JAGUAR"
 }
 
-function setSelectOptions(selectEl, values, placeholder = "Select...") {
-  if (!selectEl) return;
-  selectEl.innerHTML = "";
+@app.get("/vehicle/years")
+def vehicle_years():
+    current = datetime.now().year
+    return list(range(current, current - 30, -1))
 
-  const ph = document.createElement("option");
-  ph.value = "";
-  ph.textContent = placeholder;
-  ph.disabled = true;
-  ph.selected = true;
-  selectEl.appendChild(ph);
 
-  values.forEach((v) => {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    selectEl.appendChild(opt);
-  });
-}
+@app.get("/vehicle/makes")
+async def vehicle_makes(year: int):
+    # year is for your UI flow; vPIC "makes by type" doesn't require it
+    urls = [
+        f"{VPIC_BASE}/GetMakesForVehicleType/car?format=json",
+        f"{VPIC_BASE}/GetMakesForVehicleType/truck?format=json",
+        f"{VPIC_BASE}/GetMakesForVehicleType/multipurposepassengervehicle?format=json",
+    ]
+    makes_set = set()
 
-function fillDatalist(datalistEl, rows, getLabel) {
-  if (!datalistEl) return;
-  datalistEl.innerHTML = "";
-  rows.forEach((row) => {
-    const opt = document.createElement("option");
-    opt.value = getLabel(row);
-    datalistEl.appendChild(opt);
-  });
-}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            for url in urls:
+                r = await client.get(url)
+                r.raise_for_status()
+                data = r.json()
+                for item in data.get("Results", []):
+                    name = item.get("MakeName")
+                    if not name:
+                        continue
+                    n = name.strip()
+                    if n.upper() in POPULAR_MAKES:
+                        makes_set.add(n.upper())
+        return sorted(makes_set)
 
-async function getJSON(url) {
-  const r = await fetch(url);
-  const text = await r.text();
-  console.log("GET", url, r.status, text.slice(0, 140));
-  if (!r.ok) throw new Error(`${r.status}: ${text}`);
-  return JSON.parse(text);
-}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"/vehicle/makes failed: {type(e).__name__}: {e}")
 
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await r.text();
-  console.log("POST", url, r.status, text.slice(0, 160));
-  if (!r.ok) throw new Error(`${r.status}: ${text}`);
-  return JSON.parse(text);
-}
 
-// ---------------- ZIP datalist (Orange County) ----------------
-const OC_ZIPS = [
-  "90620","90621","90630","90631","90632","90680","90720",
-  "92602","92603","92604","92606","92612","92614","92617","92618","92620",
-  "92624","92625","92626","92627","92629","92630","92637",
-  "92646","92647","92648","92649","92651","92653","92656","92657",
-  "92660","92661","92662","92663",
-  "92672","92673","92675","92677","92679","92688","92691","92692",
-  "92701","92703","92704","92705","92706","92707","92708",
-  "92801","92802","92804","92805","92806","92807","92808",
-  "92821","92823","92831","92832","92833","92835",
-  "92840","92841","92843","92844","92845",
-  "92865","92866","92867","92869","92870","92861","92886","92887","92683","92684"
-];
+@app.get("/vehicle/models")
+async def vehicle_models(year: int, make: str):
+    # vPIC endpoint
+    url = f"{VPIC_BASE}/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            data = r.json()
+            models = []
+            seen = set()
+            for item in data.get("Results", []):
+                mn = item.get("Model_Name")
+                if not mn:
+                    continue
+                mn = mn.strip()
+                if mn.upper() in seen:
+                    continue
+                seen.add(mn.upper())
+                models.append(mn.upper())
+            return sorted(models)
 
-function loadZipDatalist() {
-  const list = el("zipList");
-  if (!list) return;
-  const zips = [...new Set(OC_ZIPS)].sort();
-  list.innerHTML = "";
-  zips.forEach((z) => {
-    const opt = document.createElement("option");
-    opt.value = z;
-    list.appendChild(opt);
-  });
-}
-
-// ---------------- Vehicle (Year/Make/Model) ----------------
-async function loadYears(yearEl) {
-  const years = await getJSON("/vehicle/years");
-  setSelectOptions(yearEl, years.map(String), "Select a year");
-  // set a default (optional)
-  if (years.length) yearEl.value = String(years[0]);
-}
-
-async function loadMakes(makeEl, yearVal) {
-  const makes = await getJSON(`/vehicle/makes?year=${encodeURIComponent(yearVal)}`);
-  setSelectOptions(makeEl, makes, "Select a make");
-}
-
-async function loadModels(modelEl, yearVal, makeVal) {
-  if (!makeVal) {
-    setSelectOptions(modelEl, [], "Select a model");
-    return;
-  }
-  const models = await getJSON(`/vehicle/models?year=${encodeURIComponent(yearVal)}&make=${encodeURIComponent(makeVal)}`);
-  setSelectOptions(modelEl, models, "Select a model");
-}
-
-// ---------------- Catalog (Category/Service) ----------------
-let categoriesCache = []; // [{key,name,count}]
-let servicesCacheByCategory = new Map(); // key -> services[]
-
-function keyByCategoryName(name) {
-  const n = (name || "").trim().toLowerCase();
-  const found = categoriesCache.find((c) => (c.name || "").trim().toLowerCase() === n);
-  return found ? found.key : "";
-}
-
-function codeByServiceName(services, name) {
-  const n = (name || "").trim().toLowerCase();
-  const found = services.find((s) => (s.name || "").trim().toLowerCase() === n);
-  return found ? found.code : "";
-}
-
-async function loadCategories() {
-  categoriesCache = await getJSON("/categories");
-  fillDatalist(el("categoryList"), categoriesCache, (c) => c.name);
-}
-
-async function loadServicesForCategory(categoryKey) {
-  if (!categoryKey) return [];
-  if (servicesCacheByCategory.has(categoryKey)) return servicesCacheByCategory.get(categoryKey);
-
-  const services = await getJSON(`/services/${encodeURIComponent(categoryKey)}`);
-  servicesCacheByCategory.set(categoryKey, services);
-  return services;
-}
-
-async function hydrateServicesUI(categoryKey) {
-  const services = await loadServicesForCategory(categoryKey);
-  fillDatalist(el("serviceList"), services, (s) => s.name);
-}
-
-// --- Searchable dropdowns (Choices.js) ---
-const _choices = {}; // store instances by element id
-
-function enhanceSelect(selectEl, placeholder = "Select...") {
-  if (!selectEl) return;
-
-  // Only for <select>
-  if (selectEl.tagName !== "SELECT") return;
-
-  // If library didn't load, silently skip (dropdown still works normally)
-  if (typeof Choices === "undefined") return;
-
-  const id = selectEl.id || selectEl.name;
-  if (!id) return;
-
-  // Destroy previous instance (important when you re-populate options)
-  if (_choices[id]) {
-    _choices[id].destroy();
-    delete _choices[id];
-  }
-
-  _choices[id] = new Choices(selectEl, {
-    searchEnabled: true,
-    shouldSort: false,              // keep your API order
-    placeholder: true,
-    placeholderValue: placeholder,
-    searchPlaceholderValue: "Type to search...",
-    itemSelectText: "",
-    removeItemButton: false,
-  });
-}
-
-// ---------------- Main init ----------------
-document.addEventListener("DOMContentLoaded", async () => {
-  const zipEl = el("zip");
-  const partsPriceEl = el("partsPrice");
-  const laborPricingEl = el("laborPricing");
-  const vehicleTypeEl = el("vehicleType");
-
-  const yearEl = el("year");
-  const makeEl = el("make");
-  const modelEl = el("model");
-
-  const categorySearchEl = el("categorySearch");
-  const categoryEl = el("category"); // hidden
-  const serviceSearchEl = el("serviceSearch");
-  const serviceEl = el("service");   // hidden
-
-  const btn = el("estimateBtn") || el("go");
-  const resultEl = el("result");
-
-  const missing = [];
-  if (!zipEl) missing.push("zip");
-  if (!partsPriceEl) missing.push("partsPrice");
-  if (!laborPricingEl) missing.push("laborPricing");
-  if (!vehicleTypeEl) missing.push("vehicleType");
-  if (!yearEl) missing.push("year");
-  if (!makeEl) missing.push("make");
-  if (!modelEl) missing.push("model");
-  if (!categorySearchEl) missing.push("categorySearch");
-  if (!categoryEl) missing.push("category(hidden)");
-  if (!serviceSearchEl) missing.push("serviceSearch");
-  if (!serviceEl) missing.push("service(hidden)");
-  if (!btn) missing.push("estimateBtn");
-  if (!resultEl) missing.push("result");
-
-  if (missing.length) {
-    console.error("Missing elements:", missing);
-    return;
-  }
-
-  try {
-    // ZIP autofill list
-    loadZipDatalist();
-    if (!zipEl.value) zipEl.value = "92646"; // optional default
-
-    // Load vehicle
-    await loadYears(yearEl);
-    await loadMakes(makeEl, yearEl.value);
-    await loadModels(modelEl, yearEl.value, makeEl.value);
-
-    // Load catalog
-    await loadCategories();
-
-    console.log("All dropdowns ready ✅");
-
-    // EVENTS
-    yearEl.addEventListener("change", async () => {
-      try {
-        await loadMakes(makeEl, yearEl.value);
-        await loadModels(modelEl, yearEl.value, makeEl.value);
-      } catch (e) {
-        console.error(e);
-      }
-    });
-
-    makeEl.addEventListener("change", async () => {
-      try {
-        await loadModels(modelEl, yearEl.value, makeEl.value);
-      } catch (e) {
-        console.error(e);
-      }
-    });
-
-    categorySearchEl.addEventListener("input", async () => {
-      try {
-        const key = keyByCategoryName(categorySearchEl.value);
-        categoryEl.value = key;
-        serviceEl.value = "";
-        serviceSearchEl.value = "";
-        await hydrateServicesUI(key);
-      } catch (e) {
-        resultEl.textContent = `Category change error: ${e.message}`;
-      }
-    });
-
-    serviceSearchEl.addEventListener("input", async () => {
-      try {
-        const categoryKey = categoryEl.value;
-        if (!categoryKey) return;
-
-        const services = await loadServicesForCategory(categoryKey);
-        const code = codeByServiceName(services, serviceSearchEl.value);
-        serviceEl.value = code;
-      } catch (e) {
-        resultEl.textContent = `Service change error: ${e.message}`;
-      }
-    });
-
-    btn.addEventListener("click", async () => {
-      try {
-        resultEl.textContent = "Calculating…";
-
-        // ensure hidden values are set (in case user typed and didn't blur)
-        const catKey = categoryEl.value || keyByCategoryName(categorySearchEl.value);
-        categoryEl.value = catKey;
-
-        const services = catKey ? await loadServicesForCategory(catKey) : [];
-        const svcCode = serviceEl.value || codeByServiceName(services, serviceSearchEl.value);
-        serviceEl.value = svcCode;
-
-        if (!catKey) throw new Error("Pick a Category");
-        if (!svcCode) throw new Error("Pick a Service");
-
-        const payload = {
-          zip_code: (zipEl.value || "").trim(),
-          parts_price: Number(partsPriceEl.value || 0),
-          labor_pricing: laborPricingEl.value,
-          vehicle_type: vehicleTypeEl.value,
-
-          year: Number(yearEl.value || 0) || null,
-          make: makeEl.value || null,
-          model: modelEl.value || null,
-
-          category: catKey,
-          service: svcCode,
-        };
-
-        const data = await postJSON("/estimate", payload);
-
-        resultEl.innerHTML = `
-          <div class="resultTitle">${data.service_name || "Estimate"}</div>
-          <div class="resultMoney">$${data.estimate_low} – $${data.estimate_high}</div>
-
-          <div class="resultMeta">
-            Labor rate: $${data.labor_rate}/hr •
-            Multiplier: ${data.vehicle_multiplier} (${data.vehicle_type}) •
-            Hours: ${data.labor_hours_min}–${data.labor_hours_max}
-          </div>
-
-          <div class="resultMeta">
-            Flat range: $${data.flat_rate_min}–$${data.flat_rate_max} •
-            Parts used: $${data.parts_price_used} •
-            Mode: ${data.labor_pricing}
-          </div>
-        `;
-      } catch (e) {
-        resultEl.textContent = `Error: /estimate failed: ${e.message}`;
-      }
-    });
-
-  } catch (e) {
-    console.error("Init failed:", e);
-    resultEl.textContent = `Init failed: ${e.message}`;
-  }
-});
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"/vehicle/models failed: {type(e).__name__}: {e}")
