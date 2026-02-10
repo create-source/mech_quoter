@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import json
 import httpx
 from datetime import datetime
