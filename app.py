@@ -10,7 +10,7 @@ import math
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-CATALOG_PATH = BASE_DIR / "services_catalog.json"
+CATALOG_PATH = Path(__file__).parent / "services_catalog.json"
 
 app = FastAPI(title="Personal Repair Estimate API", version="0.1")
 
