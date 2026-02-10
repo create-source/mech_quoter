@@ -49,18 +49,18 @@
     <label for="model">Model</label>
     <select id="model"></select>
 
-    <!-- SEARCHABLE CATEGORY -->
+    <!-- CATEGORY -->
     <label for="categorySearch">Category</label>
-    <select id="categorySearch" list="categoryList" placeholder="Type a category…"></select>
+    <input id="categorySearch" list="categoryList" placeholder="Type a category..." />
     <datalist id="categoryList"></datalist>
-    <!-- hidden actual value used by API -->
-    <select id="category" type="hidden"></select>
+    <input id="category" type="hidden" />
 
-    <!-- SEARCHABLE SERVICE -->
+    <!-- SERVICE -->
     <label for="serviceSearch">Service</label>
-    <select id="serviceSearch" list="serviceList" placeholder="Type a service…"></select>
+    <input id="serviceSearch" list="serviceList" placeholder="Type a service..." />
     <datalist id="serviceList"></datalist>
-    <select id="service" type="hidden"></select>
+    <input id="service" type="hidden" />
+
 
     <button id="estimateBtn">Get Estimate</button>
 
