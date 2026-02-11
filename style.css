@@ -150,8 +150,8 @@ label{
 
 select{
   color-scheme: dark;
-  background: rgba(5,10,22,.72);
-  color: rgba(234,240,255,.95);
+  background: #ffffff;
+  color: #000000;
 }
 
 select option,
