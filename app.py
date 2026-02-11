@@ -37,31 +37,66 @@ def index():
 
 # ---------- Vehicle endpoints ----------
 @app.get("/vehicle/years")
-def vehicle_years():
+def years():
+    from datetime import datetime
     y = datetime.utcnow().year + 1
     return list(range(y, 1980, -1))
 
 @app.get("/vehicle/makes")
 def vehicle_makes(year: int):
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
-    makes = [m for m in makes if m in POPULAR_MAKES]  # hard limit
-    return {"makes": makes}
+    """
+    VPIC: GetMakesForVehicleModelYear/{year}
+    """
+    try:
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/{year}?format=json"
+        r = httpx.get(url, timeout=15)
+        if r.status_code != 200:
+            # fallback so UI doesn't die
+            return POPULAR_MAKES
+
+        data = r.json()
+        results = data.get("Results", []) or []
+        makes = sorted({
+            (m.get("MakeName") or "").upper().strip()
+            for m in results
+            if m.get("MakeName")
+        })
+
+        # Hard-limit to popular makes (your requirement)
+        makes = [m for m in makes if m in POPULAR_MAKES]
+
+        # fallback if VPIC returns nothing after filter
+        return makes if makes else POPULAR_MAKES
+
+    except Exception:
+        # fallback so UI stays functional
+        return POPULAR_MAKES
 
 @app.get("/vehicle/models")
 def vehicle_models(year: int, make: str):
-    make = make.upper().strip()
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    models = sorted({(m.get("Model_Name") or "").strip() for m in results if m.get("Model_Name")})
-    return {"models": models}
+    """
+    VPIC: GetModelsForMakeYear/make/{make}/modelyear/{year}
+    """
+    try:
+        make_u = (make or "").upper().strip()
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make_u}/modelyear/{year}?format=json"
+        r = httpx.get(url, timeout=15)
+        if r.status_code != 200:
+            return []
+
+        data = r.json()
+        results = data.get("Results", []) or []
+        models = sorted({
+            (m.get("Model_Name") or "").strip()
+            for m in results
+            if m.get("Model_Name")
+        })
+
+        return models
+
+    except Exception:
+        return []
+
 
 # ---------- Catalog endpoints ----------
 @app.get("/catalog")
