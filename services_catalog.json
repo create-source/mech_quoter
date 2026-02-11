@@ -151,6 +151,22 @@
         { "code": "maf_sensor", "name": "MAF Sensor Replacement", "labor_hours_min": 0.3, "labor_hours_max": 0.8, "flat_rate_min": 90, "flat_rate_max": 200 },
         { "code": "vacuum_leak_diag", "name": "Vacuum Leak Diagnosis (smoke test)", "labor_hours_min": 1.0, "labor_hours_max": 2.5, "flat_rate_min": 150, "flat_rate_max": 420 },
         { "code": "pcv_valve", "name": "PCV Valve Replacement", "labor_hours_min": 0.3, "labor_hours_max": 1.2, "flat_rate_min": 70, "flat_rate_max": 220 }
+        { "code": "intake_manifold_replace",
+          "name": "Intake Manifold Replacement",
+          "labor_hours_min": 3.5,
+          "labor_hours_max": 9.0,
+          "flat_rate_min": 900,
+          "flat_rate_max": 2400
+},
+{
+  "code": "intake_manifold_gasket",
+  "name": "Intake Manifold Gasket Replacement",
+  "labor_hours_min": 3.0,
+  "labor_hours_max": 8.0,
+  "flat_rate_min": 700,
+  "flat_rate_max": 1900
+}
+
       ]
     },
 
