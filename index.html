@@ -2,132 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Repair Estimator</title>
-  <link rel="stylesheet" href="/static/style.css" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
-      <h1>Repair Estimator</h1>
-      <div class="mode" id="modeBadge"></div>
-    </header>
+  <header class="topbar">
+    <div class="brand">Repair Estimator</div>
+    <div class="tabs">
+      <button class="tab active" id="tabCustomer">Customer</button>
+      <button class="tab" id="tabOwner">Shop Owner</button>
+    </div>
+  </header>
 
-    <section class="card">
-      <div class="grid">
-        <div class="field">
-          <label>ZIP Code</label>
-          <input id="zip" placeholder="e.g. 92646" />
-        </div>
+  <main class="container">
 
-        <div class="field">
-          <label>Year</label>
-          <select id="year">
-            <option value="">Select year</option>
-          </select>
-        </div>
+    <!-- CUSTOMER -->
+    <section id="customerPanel">
+      <h2>Customer Estimate</h2>
 
-        <div class="field">
-          <label>Make (popular only)</label>
-          <select id="make" disabled>
-            <option value="">Select make</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Model</label>
-          <select id="model" disabled>
-            <option value="">Select a model</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Category</label>
-          <select id="category">
-            <option value="">Select category</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Service</label>
-          <select id="service" disabled>
-            <option value="">Select a service</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Parts price (optional)</label>
-          <input id="parts" type="number" step="0.01" min="0" placeholder="0.00" />
+      <div class="card">
+        <h3>Customer</h3>
+        <div class="grid">
+          <label>Name <input id="customerName" type="text" placeholder="John Doe"></label>
+          <label>Phone <input id="customerPhone" type="tel" placeholder="(555) 555-5555"></label>
+          <label>Email <input id="customerEmail" type="email" placeholder="you@email.com"></label>
+          <label>ZIP <input id="zipCode" type="text" inputmode="numeric" placeholder="92646"></label>
         </div>
       </div>
 
-      <button id="btnEstimate" class="btn">Get Estimate</button>
-    </section>
+      <div class="card">
+        <h3>Vehicle</h3>
+        <div class="grid">
+          <label>Year
+            <select id="yearSelect"></select>
+          </label>
 
-    <section class="card hidden" id="estimateCard">
-      <h2>Estimate</h2>
-      <div id="estimateOut" class="mono"></div>
+          <label>Make (popular)
+            <select id="makeSelect"></select>
+          </label>
 
-      <div class="divider"></div>
-
-      <h3>Customer info</h3>
-      <div class="grid">
-        <div class="field">
-          <label>Name</label>
-          <input id="custName" placeholder="Customer name" />
-        </div>
-        <div class="field">
-          <label>Email (optional)</label>
-          <input id="custEmail" placeholder="name@email.com" />
-        </div>
-        <div class="field">
-          <label>Phone (optional)</label>
-          <input id="custPhone" placeholder="(555) 555-5555" />
+          <label>Model
+            <select id="modelSelect"></select>
+          </label>
         </div>
       </div>
 
-      <h3>Sign to approve estimate</h3>
-      <div class="sigBox">
-        <canvas id="sig" width="600" height="160"></canvas>
-        <div class="sigBtns">
-          <button id="sigClear" class="btn2">Clear</button>
-          <button id="sigApprove" class="btn">Sign & Approve</button>
+      <div class="card">
+        <h3>Service</h3>
+        <div class="grid">
+          <label>Category
+            <select id="categorySelect"></select>
+          </label>
+
+          <label>Service
+            <select id="serviceSelect"></select>
+          </label>
         </div>
+
+        <div class="grid">
+          <label>Labor Hours
+            <input id="laborHours" type="number" step="0.1" min="0" placeholder="e.g. 1.5">
+          </label>
+
+          <label>Parts Price
+            <input id="partsPrice" type="number" step="0.01" min="0" placeholder="e.g. 125.00">
+          </label>
+
+          <label>Tax Rate (optional)
+            <input id="taxRate" type="number" step="0.01" min="0" max="0.2" placeholder="0.00">
+          </label>
+        </div>
+
+        <label class="block">Notes
+          <textarea id="notes" rows="3" placeholder="Optional notes..."></textarea>
+        </label>
+
+        <div class="actions">
+          <button class="btn primary" id="btnCreateEstimate">Create Estimate</button>
+        </div>
+
+        <div id="estimateResult" class="result"></div>
       </div>
 
-      <div class="mono" id="approvalOut"></div>
-    </section>
+      <div class="card" id="approvalCard" style="display:none;">
+        <h3>Customer Signature = Approval</h3>
+        <p class="muted">Have the customer sign to approve the estimate.</p>
 
-    <section class="card hidden" id="invoiceCard">
-      <h2>Invoice</h2>
-      <div class="mono" id="invoiceOut"></div>
-
-      <h3>Sign for payment acknowledgement</h3>
-      <div class="sigBox">
-        <canvas id="paySig" width="600" height="160"></canvas>
-        <div class="sigBtns">
-          <button id="payClear" class="btn2">Clear</button>
-          <button id="paySign" class="btn">Sign Invoice</button>
+        <div class="sigWrap">
+          <canvas id="sigCanvas" width="700" height="200"></canvas>
         </div>
+
+        <div class="actions">
+          <button class="btn" id="btnClearSig">Clear</button>
+          <button class="btn primary" id="btnApprove">Approve + Generate PDF</button>
+          <a class="btn" id="btnDownloadEstimatePdf" href="#" target="_blank" rel="noopener">Download Estimate PDF</a>
+        </div>
+
+        <div id="approvalResult" class="result"></div>
       </div>
-    </section>
 
-    <section class="card hidden" id="ownerCard">
-      <h2>Owner Backend</h2>
-      <div class="ownerGrid">
-        <div>
-          <h3>Approvals</h3>
-          <div id="ownerApprovals" class="mono"></div>
+      <div class="card" id="paymentCard" style="display:none;">
+        <h3>Invoice Signature = Payment Acknowledgement</h3>
+        <p class="muted">Customer signs to acknowledge payment on the invoice.</p>
+
+        <div class="sigWrap">
+          <canvas id="payCanvas" width="700" height="200"></canvas>
         </div>
-        <div>
-          <h3>Invoices</h3>
-          <div id="ownerInvoices" class="mono"></div>
+
+        <div class="actions">
+          <button class="btn" id="btnClearPaySig">Clear</button>
+          <button class="btn primary" id="btnAckPayment">Acknowledge Payment + PDF</button>
+          <a class="btn" id="btnDownloadInvoicePdf" href="#" target="_blank" rel="noopener">Download Invoice PDF</a>
         </div>
+
+        <div id="paymentResult" class="result"></div>
       </div>
     </section>
 
-  </div>
+    <!-- OWNER -->
+    <section id="ownerPanel" style="display:none;">
+      <h2>Shop Owner Backend</h2>
 
-  <script src="/static/app.js"></script>
+      <div class="card">
+        <h3>Login</h3>
+        <div class="grid">
+          <label>Admin User <input id="adminUser" type="text" placeholder="admin"></label>
+          <label>Admin Pass <input id="adminPass" type="password" placeholder="change_me"></label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnLoadAdmin">Load Estimates</button>
+        </div>
+        <div class="hint">
+          Set Render env vars: <code>ADMIN_USER</code> and <code>ADMIN_PASS</code>.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Estimates</h3>
+        <div id="adminList" class="adminList"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <script defer src="/static/app.js"></script>
 </body>
 </html>
