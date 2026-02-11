@@ -151,3 +151,29 @@ button:hover{ filter: brightness(1.05); }
   .estimate-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
   .svc-range{ white-space:normal; }
 }
+/* Choices.js styling to match your dark UI */
+.choices__inner {
+  background: #0f1115 !important;
+  border: 1px solid #2a2f3a !important;
+  border-radius: 14px !important;
+  min-height: 56px !important;
+  padding: 10px 12px !important;
+  color: #eaeef6 !important;
+}
+
+.choices__list--dropdown,
+.choices__list[aria-expanded] {
+  background: #0f1115 !important;
+  border: 1px solid #2a2f3a !important;
+  border-radius: 14px !important;
+  color: #eaeef6 !important;
+}
+
+.choices__input {
+  background: transparent !important;
+  color: #eaeef6 !important;
+}
+
+.choices__item--selectable.is-highlighted {
+  background: rgba(59, 130, 246, 0.25) !important;
+}
