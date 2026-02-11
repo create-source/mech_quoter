@@ -148,23 +148,33 @@ label{
   font-weight: 600;
 }
 
-select{
-  color-scheme: dark;
-  background: #ffffff;
-  color: #808080;
+/* Make selects readable in dark UI */
+select,
+input,
+textarea {
+  background: #0b1220;
+  color: rgba(234, 240, 255, 0.95);
+  border: 1px solid rgba(255,255,255,.18);
 }
 
+select::placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: rgba(234, 240, 255, 0.45);
+}
+
+/* Dropdown menu items */
 select option,
-select optgroup{
-  background: #0b1220;         /* dark dropdown */
-  color: rgba(234,240,255,.95); /* readable option text */
+select optgroup {
+  background: #0b1220;
+  color: rgba(234, 240, 255, 0.95);
 }
 
-/* make dropdown caret easier to see */
-select{
-  border-color: rgba(255,255,255,.18);
-}
-select:focus{
-  border-color: rgba(66,153,225,.8);
+/* Focus ring */
+select:focus,
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(66,153,225,.9);
   box-shadow: 0 0 0 4px rgba(66,153,225,.25);
 }
