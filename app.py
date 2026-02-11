@@ -16,7 +16,7 @@ ESTIMATES_PATH = DATA_DIR / "estimates.json"
 
 POPULAR_MAKES = [
     "TOYOTA","HONDA","FORD","CHEVROLET","NISSAN","HYUNDAI","KIA","DODGE","JEEP",
-    "GMC","SUBARU","BMW","MERCEDES-BENZ","VOLKSWAGEN","AUDI","LEXUS","MAZDA","TESLA"
+    "GMC","SUBARU","BMW","MERCEDES-BENZ","VOLKSWAGEN","AUDI","LEXUS","MAZDA","TESLA", "VOLVO"
 ]
 
 def load_catalog():
@@ -51,12 +51,26 @@ def years():
 
 @app.get("/vehicle/makes")
 def makes(year: int):
-    return POPULAR_MAKES
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/modelyear/{year}?format=json"
+    r = httpx.get(url, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    results = data.get("Results", [])
+    makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
+    # Hard-limit to popular makes (your requirement)
+    makes = [m for m in makes if m in POPULAR_MAKES]
+    return {"makes": makes}
 
 @app.get("/vehicle/models")
-def models(year: int, make: str):
-    # Keep simple/stable for now
-    return ["CAMRY","COROLLA","RAV4","TACOMA","PRIUS","CIVIC","ACCORD","CR-V","F-150","SILVERADO","ALTIMA"]
+def vehicle_models(year: int, make: str):
+    make = make.upper().strip()
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
+    r = httpx.get(url, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    results = data.get("Results", [])
+    models = sorted({(m.get("Model_Name") or "").strip() for m in results if m.get("Model_Name")})
+    return {"models": models}
 
 # -------- Catalog endpoints --------
 @app.get("/catalog")
