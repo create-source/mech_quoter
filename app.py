@@ -1,311 +1,366 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
-import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
+app = FastAPI()
+
+# --- Paths (everything expected to live next to this app.py) ---
 BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
+INDEX_HTML = BASE_DIR / "index.html"
 CATALOG_PATH = BASE_DIR / "services_catalog.json"
+STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="Mech Quoter", version="1.0")
-
-# Serve /static/*
+# Serve /static/style.css and /static/app.js
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# --- “Popular makes” hard-limit (edit this list anytime) ---
+POPULAR_MAKES_ORDERED: List[str] = [
+    "TOYOTA",
+    "HONDA",
+    "FORD",
+    "CHEVROLET",
+    "NISSAN",
+    "HYUNDAI",
+    "KIA",
+    "JEEP",
+    "DODGE",
+    "GMC",
+    "SUBARU",
+    "MAZDA",
+    "VOLKSWAGEN",
+    "BMW",
+    "MERCEDES-BENZ",
+    "LEXUS",
+    "AUDI",
+    "TESLA",
+]
 
-@app.get("/")
-def home():
-    # Prefer /static/index.html if you put it there, otherwise root index.html
-    static_index = STATIC_DIR / "index.html"
-    root_index = BASE_DIR / "index.html"
-    if static_index.exists():
-        return FileResponse(str(static_index))
-    if root_index.exists():
-        return FileResponse(str(root_index))
-    raise HTTPException(status_code=404, detail="index.html not found")
+POPULAR_MAKES_SET = {m.upper() for m in POPULAR_MAKES_ORDERED}
 
-
-# ---------------- Catalog loading (robust) ----------------
-
+# --- Catalog loader (cached) ---
 _catalog_cache: Optional[Dict[str, Any]] = None
 
 
-def _read_catalog_raw() -> Any:
-    if not CATALOG_PATH.exists():
-        raise RuntimeError(f"Missing {CATALOG_PATH.name} next to app.py")
-    return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-
-
-def _normalize_catalog(raw: Any) -> Dict[str, Dict[str, Any]]:
+def _load_catalog() -> Dict[str, Any]:
     """
-    Returns a normalized dict:
-      {
-        "category_key": {
-          "name": "Category Name",
-          "services": [ { "code": "...", "name": "...", ... }, ... ]
-        },
-        ...
-      }
-
-    Supports common shapes:
-    - { "categories": [ {key/name/services}, ... ] }
-    - { "catalog": [ ... ] } or { "services": [ ... ] } or { "items": [ ... ] }
-    - already-normalized dict keyed by category
+    Loads services_catalog.json from the same folder as app.py.
+    Supports two common shapes:
+      A) { "items": [ { ...row... }, ... ] }
+      B) [ { ...row... }, ... ]
+      C) { "rows": [ ... ] } or { "services": [ ... ] } etc.
     """
-    # Case 1: already normalized dict keyed by category
-    if isinstance(raw, dict):
-        # If it has "categories" list, use it
-        if isinstance(raw.get("categories"), list):
-            cats = raw["categories"]
-            out: Dict[str, Dict[str, Any]] = {}
-            for c in cats:
-                if not isinstance(c, dict):
-                    continue
-                key = c.get("key") or c.get("id") or c.get("category_key") or c.get("category")
-                name = c.get("name") or c.get("label") or key
-                services = c.get("services") or c.get("items") or []
-                if not key or not isinstance(services, list):
-                    continue
-                norm_services = []
-                for s in services:
-                    if not isinstance(s, dict):
-                        continue
-                    code = s.get("code") or s.get("id") or s.get("service_code") or s.get("service")
-                    sname = s.get("name") or s.get("label") or code
-                    if not code or not sname:
-                        continue
-                    s2 = dict(s)
-                    s2["code"] = str(code)
-                    s2["name"] = str(sname)
-                    norm_services.append(s2)
-                out[str(key)] = {"name": str(name), "services": norm_services}
-            return out
-
-        # If it looks like dict-of-categories already (values are dicts with services)
-        out2: Dict[str, Dict[str, Any]] = {}
-        looks_like = False
-        for k, v in raw.items():
-            if isinstance(v, dict) and ("services" in v or "items" in v):
-                looks_like = True
-        if looks_like:
-            for k, v in raw.items():
-                if not isinstance(v, dict):
-                    continue
-                services = v.get("services") or v.get("items") or []
-                if not isinstance(services, list):
-                    continue
-                name = v.get("name") or k
-                norm_services = []
-                for s in services:
-                    if not isinstance(s, dict):
-                        continue
-                    code = s.get("code") or s.get("id") or s.get("service_code") or s.get("service")
-                    sname = s.get("name") or s.get("label") or code
-                    if not code or not sname:
-                        continue
-                    s2 = dict(s)
-                    s2["code"] = str(code)
-                    s2["name"] = str(sname)
-                    norm_services.append(s2)
-                out2[str(k)] = {"name": str(name), "services": norm_services}
-            return out2
-
-        # Otherwise try to find first list inside dict that contains dict items with category/service info
-        for key in ("items", "services", "catalog", "rows", "data"):
-            if isinstance(raw.get(key), list):
-                raw = raw[key]
-                break
-
-    # Case 2: list of rows (service rows) -> build categories from rows
-    # Each row should have category + service-ish fields
-    out3: Dict[str, Dict[str, Any]] = {}
-    if isinstance(raw, list):
-        for row in raw:
-            if not isinstance(row, dict):
-                continue
-            cat = row.get("category") or row.get("service_category") or row.get("serviceCategory") or row.get("category_name")
-            svc = row.get("service") or row.get("name") or row.get("service_name") or row.get("serviceName")
-            code = row.get("code") or row.get("service_code") or svc
-            if not cat or not svc:
-                continue
-            cat_key = str(cat).strip()
-            if cat_key not in out3:
-                out3[cat_key] = {"name": cat_key, "services": []}
-            s2 = dict(row)
-            s2["code"] = str(code).strip()
-            s2["name"] = str(svc).strip()
-            out3[cat_key]["services"].append(s2)
-        return out3
-
-    return {}
-
-
-def get_catalog() -> Dict[str, Dict[str, Any]]:
     global _catalog_cache
-    # Cache in memory so Render doesn’t re-read file every request
     if _catalog_cache is not None:
         return _catalog_cache
-    try:
-        raw = _read_catalog_raw()
-        norm = _normalize_catalog(raw)
-        if not norm:
-            raise RuntimeError("Catalog loaded but could not be normalized. Check JSON shape.")
-        _catalog_cache = norm
-        return norm
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    if not CATALOG_PATH.exists():
+        raise HTTPException(status_code=500, detail="Missing services_catalog.json next to app.py")
+
+    raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+
+    # normalize to dict with "items"
+    if isinstance(raw, list):
+        _catalog_cache = {"items": raw}
+        return _catalog_cache
+
+    if isinstance(raw, dict):
+        # find first list-of-dicts in common keys
+        for key in ("items", "rows", "services", "catalog", "data"):
+            v = raw.get(key)
+            if isinstance(v, list):
+                _catalog_cache = {"items": v}
+                return _catalog_cache
+
+        # If it's already a dict but not in expected shape, still store it
+        _catalog_cache = raw
+        return _catalog_cache
+
+    raise HTTPException(status_code=500, detail="services_catalog.json must be a JSON object or array")
 
 
-def find_service(catalog: Dict[str, Dict[str, Any]], category_key: str, service_code: str) -> Optional[Dict[str, Any]]:
-    cat = catalog.get(category_key)
-    if not cat:
-        return None
-    for s in cat.get("services", []):
-        if str(s.get("code")) == str(service_code):
-            return s
-    return None
+def _iter_rows(catalog: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Return list of row dicts from catalog.
+    """
+    items = catalog.get("items")
+    if isinstance(items, list):
+        return [x for x in items if isinstance(x, dict)]
+
+    # fallback: find any list-of-dicts value
+    for v in catalog.values():
+        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            return v
+
+    return []
 
 
-# ---------------- API: vehicle makes/models (popular only) ----------------
-
-VPIC_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
-
-POPULAR_MAKES = {
-    "ACURA","AUDI","BMW","BUICK","CADILLAC","CHEVROLET","CHRYSLER","DODGE","FORD","GMC",
-    "HONDA","HYUNDAI","INFINITI","JEEP","KIA","LEXUS","LINCOLN","MAZDA","MERCEDES-BENZ",
-    "MINI","MITSUBISHI","NISSAN","RAM","SUBARU","TESLA","TOYOTA","VOLKSWAGEN","VOLVO",
-    "PORSCHE","LAND ROVER","JAGUAR"
-}
-
-@app.get("/vehicle/years")
-def vehicle_years():
-    current = datetime.now().year
-    return list(range(current, current - 30, -1))
+def _norm(s: Optional[str]) -> str:
+    return (s or "").strip()
 
 
-@app.get("/vehicle/makes")
-async def vehicle_makes(year: int):
-    # year is used by your UI flow; vPIC doesn't strictly require it here
-    urls = [
-        f"{VPIC_BASE}/GetMakesForVehicleType/car?format=json",
-        f"{VPIC_BASE}/GetMakesForVehicleType/truck?format=json",
-        f"{VPIC_BASE}/GetMakesForVehicleType/multipurposepassengervehicle?format=json",
-    ]
-    makes_set = set()
+def _get_vehicle_fields(row: Dict[str, Any]) -> tuple[str, str, str, str]:
+    """
+    Extract vehicle_type, year, make, model using multiple possible key names.
+    """
+    vehicle_type = row.get("vehicle_type") or row.get("vehicleType") or row.get("type") or ""
+    year = row.get("year") or row.get("vehicle_year") or row.get("vehicleYear") or ""
+    make = row.get("make") or row.get("vehicle_make") or row.get("vehicleMake") or ""
+    model = row.get("model") or row.get("vehicle_model") or row.get("vehicleModel") or ""
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        for url in urls:
-            r = await client.get(url)
-            r.raise_for_status()
-            data = r.json()
-            for item in data.get("Results", []):
-                name = item.get("MakeName")
-                if not name:
-                    continue
-                n = name.strip().upper()
-                if n in POPULAR_MAKES:
-                    makes_set.add(n)
-
-    return sorted(makes_set)
+    return _norm(str(vehicle_type)), _norm(str(year)), _norm(str(make)), _norm(str(model))
 
 
-@app.get("/vehicle/models")
-async def vehicle_models(year: int, make: str):
-    url = f"{VPIC_BASE}/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-        data = r.json()
+def _get_service_fields(row: Dict[str, Any]) -> tuple[str, str, str, str]:
+    """
+    Extract category_key, category_name, service_code, service_name.
+    """
+    # category
+    category_key = row.get("category_key") or row.get("categoryKey") or row.get("service_category_key") or row.get("serviceCategoryKey") or row.get("category") or row.get("service_category") or ""
+    category_name = row.get("category_name") or row.get("categoryName") or row.get("service_category_name") or row.get("serviceCategory") or row.get("serviceCategoryName") or ""
 
-    models = []
-    seen = set()
-    for item in data.get("Results", []):
-        mn = item.get("Model_Name")
-        if not mn:
+    # service
+    service_code = row.get("service_code") or row.get("serviceCode") or row.get("code") or ""
+    service_name = row.get("service_name") or row.get("serviceName") or row.get("service") or row.get("name") or ""
+
+    return _norm(str(category_key)), _norm(str(category_name)), _norm(str(service_code)), _norm(str(service_name))
+
+
+def _matches_vehicle(row: Dict[str, Any], year: Optional[str], make: Optional[str], model: Optional[str], vehicle_type: Optional[str]) -> bool:
+    r_type, r_year, r_make, r_model = _get_vehicle_fields(row)
+
+    if vehicle_type and r_type and r_type.lower() != vehicle_type.lower():
+        return False
+    if year and r_year and r_year != str(year):
+        return False
+    if make and r_make and r_make.lower() != str(make).lower():
+        return False
+    if model and r_model and r_model.lower() != str(model).lower():
+        return False
+
+    return True
+
+
+def _build_catalog_tree(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Build category->services tree from row data.
+    This is returned once to the client, and then the UI filters category->service client-side.
+    """
+    categories: Dict[str, Dict[str, Any]] = {}
+
+    for row in rows:
+        cat_key, cat_name, svc_code, svc_name = _get_service_fields(row)
+        if not cat_key:
             continue
-        mn = mn.strip().upper()
-        if mn in seen:
-            continue
-        seen.add(mn)
-        models.append(mn)
 
-    return sorted(models)
+        if cat_key not in categories:
+            categories[cat_key] = {
+                "key": cat_key,
+                "name": cat_name or cat_key,
+                "services": {},  # temp dict
+            }
 
+        if svc_code or svc_name:
+            code = svc_code or svc_name  # always ensure a stable value
+            sdict = categories[cat_key]["services"].setdefault(code, {
+                "code": code,
+                "name": svc_name or svc_code or code,
+                # pricing fields (if present)
+                "labor_hours_min": row.get("labor_hours_min"),
+                "labor_hours_max": row.get("labor_hours_max"),
+                "flat_rate_min": row.get("flat_rate_min"),
+                "flat_rate_max": row.get("flat_rate_max"),
+            })
 
-# ---------------- API: categories + services ----------------
+            # If later rows have better names or pricing, prefer them
+            if not sdict.get("name") and (svc_name or svc_code):
+                sdict["name"] = svc_name or svc_code
+            for k in ("labor_hours_min", "labor_hours_max", "flat_rate_min", "flat_rate_max"):
+                if sdict.get(k) is None and row.get(k) is not None:
+                    sdict[k] = row.get(k)
 
-@app.get("/categories")
-def categories():
-    catalog = get_catalog()
-    out = [{"key": k, "name": v.get("name", k), "count": len(v.get("services", []))} for k, v in catalog.items()]
-    out.sort(key=lambda x: (x["name"] or "").lower())
+    # convert services dict->list
+    out = {"categories": []}
+    for cat_key, c in categories.items():
+        services_list = list(c["services"].values())
+        # sort services by name
+        services_list.sort(key=lambda x: (str(x.get("name") or "").lower()))
+        c["services"] = services_list
+        out["categories"].append(c)
+
+    # sort categories by name
+    out["categories"].sort(key=lambda x: (str(x.get("name") or "").lower()))
     return out
 
 
-@app.get("/services/{category_key}")
-def services_for_category(category_key: str):
-    catalog = get_catalog()
-    cat = catalog.get(category_key)
-    if not cat:
-        raise HTTPException(status_code=404, detail=f"Unknown category '{category_key}'")
-    svcs = cat.get("services", [])
-    svcs_sorted = sorted(svcs, key=lambda s: (str(s.get("name", ""))).lower())
-    return svcs_sorted
+# ---------- Routes ----------
+@app.get("/")
+def home() -> FileResponse:
+    if not INDEX_HTML.exists():
+        raise HTTPException(status_code=500, detail="Missing index.html next to app.py")
+    return FileResponse(str(INDEX_HTML))
 
 
-# ---------------- Estimate ----------------
-
-class EstimateIn(BaseModel):
-    zip_code: Optional[str] = None
-    labor_pricing: Optional[str] = "hourly"   # keep for future
-    year: Optional[int] = None
-    make: Optional[str] = None
-    model: Optional[str] = None
-    category: str
-    service: str
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
 
 
-@app.post("/estimate")
-def estimate(payload: EstimateIn):
-    catalog = get_catalog()
-    svc = find_service(catalog, payload.category, payload.service)
-    if not svc:
-        raise HTTPException(status_code=404, detail="Service not found for that category")
+@app.get("/vehicle/years")
+def vehicle_years(vehicle_type: Optional[str] = Query(default=None)) -> JSONResponse:
+    catalog = _load_catalog()
+    rows = _iter_rows(catalog)
 
-    # You said you want part price gone; estimate uses service data only.
-    # If your JSON includes flat_rate / labor_hours, use it; else simple fallback.
-    lh_min = float(svc.get("labor_hours_min") or 0.0)
-    lh_max = float(svc.get("labor_hours_max") or lh_min or 0.0)
+    years: Set[str] = set()
+    for row in rows:
+        if not _matches_vehicle(row, year=None, make=None, model=None, vehicle_type=vehicle_type):
+            continue
+        _, y, _, _ = _get_vehicle_fields(row)
+        if y:
+            years.add(y)
 
-    if lh_min <= 0 and lh_max <= 0:
-        lh_min = lh_max = 1.0
-    elif lh_min <= 0:
-        lh_min = lh_max
-    elif lh_max <= 0:
-        lh_max = lh_min
+    # fallback if none in file
+    if not years:
+        years = {str(y) for y in range(1980, 2028)}
 
-    # Simple labor rate placeholder (you can adjust later or zip-map it)
-    labor_rate = float(svc.get("labor_rate") or 90.0)
+    return JSONResponse(sorted(years, key=lambda x: int(x) if x.isdigit() else 999999))
 
-    low = labor_rate * lh_min
-    high = labor_rate * lh_max
 
-    return {
-        "service_name": svc.get("name", payload.service),
-        "category": payload.category,
-        "service": payload.service,
-        "labor_rate": round(labor_rate, 2),
-        "labor_hours_min": round(lh_min, 2),
-        "labor_hours_max": round(lh_max, 2),
-        "estimate_low": round(low, 2),
-        "estimate_high": round(high, 2),
-    }
+@app.get("/vehicle/makes")
+def vehicle_makes(
+    year: Optional[str] = Query(default=None),
+    vehicle_type: Optional[str] = Query(default=None),
+) -> JSONResponse:
+    catalog = _load_catalog()
+    rows = _iter_rows(catalog)
+
+    makes: Set[str] = set()
+    for row in rows:
+        if not _matches_vehicle(row, year=year, make=None, model=None, vehicle_type=vehicle_type):
+            continue
+        _, _, mk, _ = _get_vehicle_fields(row)
+        if mk:
+            makes.add(mk.upper())
+
+    # Hard-limit to only popular makes (in your preferred order)
+    popular_available = [m for m in POPULAR_MAKES_ORDERED if m in makes]
+    if popular_available:
+        return JSONResponse(popular_available)
+
+    # If the dataset doesn’t include makes (or no match), still return popular list
+    return JSONResponse(POPULAR_MAKES_ORDERED)
+
+
+@app.get("/vehicle/models")
+def vehicle_models(
+    year: Optional[str] = Query(default=None),
+    make: Optional[str] = Query(default=None),
+    vehicle_type: Optional[str] = Query(default=None),
+) -> JSONResponse:
+    catalog = _load_catalog()
+    rows = _iter_rows(catalog)
+
+    models: Set[str] = set()
+    for row in rows:
+        if not _matches_vehicle(row, year=year, make=make, model=None, vehicle_type=vehicle_type):
+            continue
+        _, _, _, mdl = _get_vehicle_fields(row)
+        if mdl:
+            models.add(mdl)
+
+    return JSONResponse(sorted(models, key=lambda x: x.lower()))
+
+
+@app.get("/catalog")
+def catalog() -> JSONResponse:
+    """
+    One call for the whole category->services tree.
+    UI filters category->service entirely client-side.
+    """
+    catalog = _load_catalog()
+    rows = _iter_rows(catalog)
+    return JSONResponse(_build_catalog_tree(rows))
+
+
+def _to_float(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+@app.get("/estimate")
+def estimate(
+    zip_code: str = Query(..., min_length=5, max_length=10),
+    year: Optional[str] = Query(default=None),
+    make: Optional[str] = Query(default=None),
+    model: Optional[str] = Query(default=None),
+    vehicle_type: Optional[str] = Query(default=None),
+    category: str = Query(...),
+    service: str = Query(...),
+    parts_price: Optional[float] = Query(default=0.0),
+) -> JSONResponse:
+    """
+    Estimate calculation:
+    - Uses service catalog’s flat_rate_min/max if present; otherwise labor_hours_min/max * labor_rate.
+    - Adds parts_price to both min/max totals.
+    """
+    labor_rate = 90.0  # as you requested
+
+    catalog = _load_catalog()
+    rows = _iter_rows(catalog)
+
+    # find the service entry in the built catalog tree
+    tree = _build_catalog_tree(rows)
+    cat_obj = next((c for c in tree["categories"] if c["key"] == category), None)
+    if not cat_obj:
+        raise HTTPException(status_code=400, detail="Unknown category")
+
+    svc_obj = next((s for s in cat_obj["services"] if s["code"] == service), None)
+    if not svc_obj:
+        raise HTTPException(status_code=400, detail="Unknown service")
+
+    lh_min = _to_float(svc_obj.get("labor_hours_min"))
+    lh_max = _to_float(svc_obj.get("labor_hours_max"))
+    fr_min = _to_float(svc_obj.get("flat_rate_min"))
+    fr_max = _to_float(svc_obj.get("flat_rate_max"))
+
+    # compute labor
+    if fr_min is not None and fr_max is not None:
+        labor_min = fr_min
+        labor_max = fr_max
+    else:
+        # fallback to hours * rate
+        if lh_min is None:
+            lh_min = 1.0
+        if lh_max is None:
+            lh_max = max(lh_min, 1.5)
+        labor_min = lh_min * labor_rate
+        labor_max = lh_max * labor_rate
+
+    p = float(parts_price or 0.0)
+    total_min = labor_min + p
+    total_max = labor_max + p
+
+    return JSONResponse(
+        {
+            "zip_code": zip_code,
+            "vehicle": {"year": year, "make": make, "model": model, "vehicle_type": vehicle_type},
+            "selection": {"category": category, "service": service},
+            "service_name": svc_obj.get("name") or service,
+            "labor_rate": labor_rate,
+            "parts_price": round(p, 2),
+            "labor_min": round(labor_min, 2),
+            "labor_max": round(labor_max, 2),
+            "total_min": round(total_min, 2),
+            "total_max": round(total_max, 2),
+        }
+    )
