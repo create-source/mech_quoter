@@ -1,339 +1,378 @@
-// Repair Estimator UI (Customer + Owner)
-// Owner mode: https://YOUR_URL/?mode=owner&pin=1234
+let catalog = null;
+let estimateId = null;
+let catByKey = new Map();
+let svcByCodeByCat = new Map();
+
+let yearChoices, makeChoices, modelChoices, catChoices, svcChoices;
 
 const $ = (id) => document.getElementById(id);
 
-const state = {
-  catalog: null,
-  estimate: null,
-  approvalId: null,
-  invoiceId: null,
-  ownerMode: false,
-  pin: null
-};
-
-function qp(name) {
-  const u = new URL(window.location.href);
-  return u.searchParams.get(name);
+function fmtMoney(x) {
+  const n = Number(x || 0);
+  return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
-async function jget(url, opts={}) {
-  const r = await fetch(url, opts);
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`${r.status} ${r.statusText}: ${t}`);
-  }
+async function apiGet(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`GET ${url} failed: ${r.status}`);
   return r.json();
 }
 
-async function jpost(url, body, opts={}) {
+async function apiPost(url, body, headers = {}) {
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    body: JSON.stringify(body)
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`${r.status} ${r.statusText}: ${t}`);
+    const t = await r.text().catch(() => "");
+    throw new Error(`POST ${url} failed: ${r.status} ${t}`);
   }
   return r.json();
 }
 
-function fmtMoney(n) {
-  return `$${Number(n || 0).toFixed(2)}`;
-}
-
-function setOptions(sel, items, placeholder) {
-  sel.innerHTML = "";
-  const o0 = document.createElement("option");
-  o0.value = "";
-  o0.textContent = placeholder;
-  sel.appendChild(o0);
-
-  for (const it of items) {
-    const o = document.createElement("option");
-    if (typeof it === "string") {
-      o.value = it;
-      o.textContent = it;
-    } else {
-      o.value = it.value;
-      o.textContent = it.label;
-    }
-    sel.appendChild(o);
-  }
-}
-
-function wireSignature(canvasId, clearBtnId) {
+// ---------- SIMPLE SIGNATURE PAD ----------
+function makeSignaturePad(canvasId) {
   const canvas = $(canvasId);
-  const clearBtn = $(clearBtnId);
   const ctx = canvas.getContext("2d");
-
-  // High-DPI
-  function resize() {
-    const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.round(rect.width * ratio);
-    canvas.height = Math.round(rect.height * ratio);
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(234,240,255,0.95)";
-  }
-  resize();
-  window.addEventListener("resize", resize);
-
   let drawing = false;
   let last = null;
 
-  function pos(e) {
+  function resizeToDevice() {
     const rect = canvas.getBoundingClientRect();
-    const p = e.touches ? e.touches[0] : e;
-    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(rect.width * ratio);
+    canvas.height = Math.floor(rect.height * ratio);
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "white";
   }
 
-  function start(e) {
-    drawing = true;
-    last = pos(e);
-    e.preventDefault();
+  function pos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return { x, y };
   }
+
+  function down(e) { e.preventDefault(); drawing = true; last = pos(e); }
+  function up(e) { e.preventDefault(); drawing = false; last = null; }
   function move(e) {
     if (!drawing) return;
+    e.preventDefault();
     const p = pos(e);
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last = p;
-    e.preventDefault();
-  }
-  function end(e) {
-    drawing = false;
-    last = null;
-    e.preventDefault();
   }
 
-  canvas.addEventListener("mousedown", start);
+  canvas.addEventListener("mousedown", down);
+  canvas.addEventListener("mouseup", up);
+  canvas.addEventListener("mouseleave", up);
   canvas.addEventListener("mousemove", move);
-  window.addEventListener("mouseup", end);
 
-  canvas.addEventListener("touchstart", start, { passive: false });
+  canvas.addEventListener("touchstart", down, { passive: false });
+  canvas.addEventListener("touchend", up, { passive: false });
+  canvas.addEventListener("touchcancel", up, { passive: false });
   canvas.addEventListener("touchmove", move, { passive: false });
-  window.addEventListener("touchend", end, { passive: false });
 
-  clearBtn.addEventListener("click", () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  window.addEventListener("resize", () => {
+    // Reset the canvas on resize for simplicity
+    const data = canvas.toDataURL("image/png");
+    resizeToDevice();
+    // don’t restore strokes perfectly; keep it simple
   });
 
-  function isEmpty() {
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    for (let i = 3; i < img.length; i += 4) {
-      if (img[i] !== 0) return false;
+  // Initialize
+  setTimeout(() => resizeToDevice(), 0);
+
+  return {
+    clear() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    },
+    toDataURL() {
+      // Need a stable export size; use current device pixels
+      return canvas.toDataURL("image/png");
     }
-    return true;
-  }
-
-  function toDataURL() {
-    // export at native resolution
-    return canvas.toDataURL("image/png");
-  }
-
-  return { isEmpty, toDataURL };
+  };
 }
 
-async function init() {
+const approvePad = makeSignaturePad("sigCanvas");
+const payPad = makeSignaturePad("payCanvas");
+
+// ---------- UI ----------
+function setTab(isOwner) {
+  $("customerPanel").style.display = isOwner ? "none" : "block";
+  $("ownerPanel").style.display = isOwner ? "block" : "none";
+  $("tabCustomer").classList.toggle("active", !isOwner);
+  $("tabOwner").classList.toggle("active", isOwner);
+}
+
+$("tabCustomer").addEventListener("click", () => setTab(false));
+$("tabOwner").addEventListener("click", () => setTab(true));
+
+function initChoices() {
+  yearChoices = new Choices("#yearSelect", { shouldSort: false, searchEnabled: true });
+  makeChoices = new Choices("#makeSelect", { shouldSort: false, searchEnabled: true });
+  modelChoices = new Choices("#modelSelect", { shouldSort: false, searchEnabled: true });
+
+  catChoices = new Choices("#categorySelect", { shouldSort: false, searchEnabled: true });
+  svcChoices = new Choices("#serviceSelect", { shouldSort: false, searchEnabled: true });
+}
+
+function setChoices(choices, items, placeholder = "Select...") {
+  choices.clearChoices();
+  choices.setChoices(
+    [{ value: "", label: placeholder, selected: true, disabled: true }].concat(
+      items.map((x) => ({ value: x.value, label: x.label }))
+    ),
+    "value",
+    "label",
+    true
+  );
+}
+
+function buildCatalogMaps() {
+  catByKey = new Map();
+  svcByCodeByCat = new Map();
+
+  for (const c of (catalog.categories || [])) {
+    catByKey.set(c.key, c);
+    const m = new Map();
+    for (const s of (c.services || [])) m.set(s.code, s);
+    svcByCodeByCat.set(c.key, m);
+  }
+}
+
+async function loadCatalog() {
+  catalog = await apiGet("/catalog");
+  buildCatalogMaps();
+
+  const cats = (catalog.categories || []).map(c => ({ value: c.key, label: c.name }));
+  setChoices(catChoices, cats, "Choose category");
+  setChoices(svcChoices, [], "Choose service");
+}
+
+async function loadYears() {
+  const years = await apiGet("/vehicle/years");
+  setChoices(yearChoices, years.map(y => ({ value: String(y), label: String(y) })), "Choose year");
+}
+
+async function loadMakes(year) {
+  const makes = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`);
+  setChoices(makeChoices, makes.map(m => ({ value: m, label: m })), "Choose make");
+  setChoices(modelChoices, [], "Choose model");
+}
+
+async function loadModels(year, make) {
+  const models = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
+  setChoices(modelChoices, models.map(m => ({ value: m, label: m })), "Choose model");
+}
+
+function onCategoryChange(catKey) {
+  const c = catByKey.get(catKey);
+  const svcs = (c?.services || []).map(s => ({ value: s.code, label: s.name }));
+  setChoices(svcChoices, svcs, "Choose service");
+
+  // Helpful: auto-fill labor hours if the service has range
+  $("laborHours").value = "";
+}
+
+function onServiceChange(catKey, svcCode) {
+  const svcMap = svcByCodeByCat.get(catKey);
+  const svc = svcMap?.get(svcCode);
+  if (!svc) return;
+
+  // Pick a midpoint default
+  const min = Number(svc.labor_hours_min || 0);
+  const max = Number(svc.labor_hours_max || min);
+  const mid = (min + max) / 2;
+  if (!Number.isFinite(mid)) return;
+  $("laborHours").value = mid.toFixed(1);
+}
+
+// ---------- EVENTS ----------
+$("yearSelect").addEventListener("change", async (e) => {
+  const year = e.target.value;
+  if (!year) return;
+  await loadMakes(year);
+});
+
+$("makeSelect").addEventListener("change", async (e) => {
+  const year = $("yearSelect").value;
+  const make = e.target.value;
+  if (!year || !make) return;
+  await loadModels(year, make);
+});
+
+$("categorySelect").addEventListener("change", (e) => {
+  const catKey = e.target.value;
+  if (!catKey) return;
+  onCategoryChange(catKey);
+});
+
+$("serviceSelect").addEventListener("change", (e) => {
+  const catKey = $("categorySelect").value;
+  const svcCode = e.target.value;
+  if (!catKey || !svcCode) return;
+  onServiceChange(catKey, svcCode);
+});
+
+$("btnClearSig").addEventListener("click", () => approvePad.clear());
+$("btnClearPaySig").addEventListener("click", () => payPad.clear());
+
+$("btnCreateEstimate").addEventListener("click", async () => {
   try {
-    state.ownerMode = (qp("mode") === "owner");
-    state.pin = qp("pin") || null;
+    const year = $("yearSelect").value;
+    const make = $("makeSelect").value;
+    const model = $("modelSelect").value;
+    const category_key = $("categorySelect").value;
+    const service_code = $("serviceSelect").value;
 
-    $("modeBadge").textContent = state.ownerMode ? "Owner Mode" : "Customer Mode";
+    const c = catByKey.get(category_key);
+    const s = (svcByCodeByCat.get(category_key) || new Map()).get(service_code);
 
-    // Load years
-    const years = await jget("/vehicle/years");
-    setOptions($("year"), years.years.map(String), "Select year");
+    if (!year || !make || !model) throw new Error("Pick Year, Make, Model.");
+    if (!c || !s) throw new Error("Pick Category and Service.");
 
-    // Load catalog once (Category->Service is client-side)
-    state.catalog = await jget("/api/catalog");
-    const cats = (state.catalog.categories || []).map(c => ({ value: c.key, label: c.name }));
-    setOptions($("category"), cats, "Select category");
+    const payload = {
+      customer_name: $("customerName").value.trim(),
+      customer_phone: $("customerPhone").value.trim(),
+      customer_email: $("customerEmail").value.trim(),
+      zip_code: $("zipCode").value.trim(),
+      year,
+      make,
+      model,
+      category_key,
+      category_name: c.name,
+      service_code,
+      service_name: s.name,
+      labor_rate: Number(catalog.labor_rate || 90),
+      labor_hours: Number($("laborHours").value || 0),
+      parts_price: Number($("partsPrice").value || 0),
+      tax_rate: Number($("taxRate").value || 0),
+      notes: $("notes").value.trim()
+    };
 
-    // Owner mode panel
-    if (state.ownerMode) {
-      $("ownerCard").classList.remove("hidden");
-      await refreshOwner();
+    const res = await apiPost("/estimate", payload);
+    estimateId = res.id;
+
+    $("estimateResult").textContent =
+      `Estimate Created: ${estimateId}\n` +
+      `Subtotal: ${fmtMoney(res.totals.subtotal)}\n` +
+      `Tax: ${fmtMoney(res.totals.tax)}\n` +
+      `Total: ${fmtMoney(res.totals.total)}`;
+
+    $("approvalCard").style.display = "block";
+    $("paymentCard").style.display = "block";
+
+    $("btnDownloadEstimatePdf").href = `/estimate/${encodeURIComponent(estimateId)}/pdf`;
+    $("btnDownloadInvoicePdf").href = `/invoice/${encodeURIComponent(estimateId)}/pdf`;
+  } catch (err) {
+    $("estimateResult").textContent = String(err.message || err);
+  }
+});
+
+$("btnApprove").addEventListener("click", async () => {
+  try {
+    if (!estimateId) throw new Error("Create an estimate first.");
+    const signature_png = approvePad.toDataURL();
+    const res = await apiPost(`/estimate/${encodeURIComponent(estimateId)}/approve`, { signature_png });
+    $("approvalResult").textContent = `Approved ✅\nPDF ready.`;
+    $("btnDownloadEstimatePdf").href = `/estimate/${encodeURIComponent(estimateId)}/pdf`;
+  } catch (err) {
+    $("approvalResult").textContent = String(err.message || err);
+  }
+});
+
+$("btnAckPayment").addEventListener("click", async () => {
+  try {
+    if (!estimateId) throw new Error("Create an estimate first.");
+    const signature_png = payPad.toDataURL();
+    const res = await apiPost(`/invoice/${encodeURIComponent(estimateId)}/ack_payment`, { signature_png });
+    $("paymentResult").textContent = `Payment acknowledged ✅\nInvoice PDF ready.`;
+    $("btnDownloadInvoicePdf").href = `/invoice/${encodeURIComponent(estimateId)}/pdf`;
+  } catch (err) {
+    $("paymentResult").textContent = String(err.message || err);
+  }
+});
+
+// ----- ADMIN -----
+function basicAuthHeader(user, pass) {
+  const token = btoa(`${user}:${pass}`);
+  return { Authorization: `Basic ${token}` };
+}
+
+$("btnLoadAdmin").addEventListener("click", async () => {
+  try {
+    const user = $("adminUser").value.trim();
+    const pass = $("adminPass").value.trim();
+    if (!user || !pass) throw new Error("Enter admin credentials.");
+
+    const list = await apiPost("/admin/estimates", {}, basicAuthHeader(user, pass));
+    // ^ workaround: many hosts block GET+auth in some embedded fetch contexts; using POST avoids weirdness
+    // server doesn’t have POST /admin/estimates, so fallback to GET properly:
+  } catch (e) {
+    // Actually do GET:
+    try {
+      const user = $("adminUser").value.trim();
+      const pass = $("adminPass").value.trim();
+      const headers = basicAuthHeader(user, pass);
+
+      const r = await fetch("/admin/estimates", { headers });
+      if (!r.ok) throw new Error(`Admin load failed: ${r.status}`);
+      const rows = await r.json();
+
+      const wrap = $("adminList");
+      wrap.innerHTML = "";
+
+      for (const row of rows) {
+        const div = document.createElement("div");
+        div.className = "adminItem";
+
+        div.innerHTML = `
+          <div class="adminRow">
+            <div><b>${row.id}</b><div class="muted">${row.created_at}</div></div>
+            <div class="muted">${row.year || ""} ${row.make || ""} ${row.model || ""}</div>
+            <div><b>${fmtMoney(row.total || 0)}</b><div class="muted">${row.status} / ${row.invoice_status}</div></div>
+          </div>
+          <div class="actions">
+            <a class="btn" href="/estimate/${encodeURIComponent(row.id)}/pdf" target="_blank" rel="noopener">Estimate PDF</a>
+            <a class="btn" href="/invoice/${encodeURIComponent(row.id)}/pdf" target="_blank" rel="noopener">Invoice PDF</a>
+            <button class="btn primary" data-invoice="${row.id}">Mark Invoiced</button>
+          </div>
+        `;
+
+        div.querySelector("[data-invoice]").addEventListener("click", async (ev) => {
+          const id = ev.currentTarget.getAttribute("data-invoice");
+          const user2 = $("adminUser").value.trim();
+          const pass2 = $("adminPass").value.trim();
+          const headers2 = basicAuthHeader(user2, pass2);
+
+          const rr = await fetch(`/admin/estimate/${encodeURIComponent(id)}/mark_invoiced`, {
+            method: "POST",
+            headers: { ...headers2, "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
+          if (!rr.ok) alert(`Failed: ${rr.status}`);
+          else alert("Invoice marked as issued ✅");
+        });
+
+        wrap.appendChild(div);
+      }
+    } catch (err2) {
+      $("adminList").textContent = String(err2.message || err2);
     }
-
-    // Wiring dependent selects
-    $("year").addEventListener("change", onYear);
-    $("make").addEventListener("change", onMake);
-    $("category").addEventListener("change", onCategory);
-    $("service").addEventListener("change", () => {});
-
-    $("btnEstimate").addEventListener("click", onEstimate);
-
-    // Signature pads
-    const sig = wireSignature("sig", "sigClear");
-    const paySig = wireSignature("paySig", "payClear");
-
-    $("sigApprove").addEventListener("click", async () => {
-      if (!state.estimate) return alert("Get an estimate first.");
-      if (!$("custName").value.trim()) return alert("Customer name required.");
-      if (sig.isEmpty()) return alert("Please sign in the box.");
-
-      const res = await jpost("/api/approval", {
-        customer_name: $("custName").value.trim(),
-        customer_email: $("custEmail").value.trim(),
-        customer_phone: $("custPhone").value.trim(),
-        estimate: state.estimate,
-        signature_data_url: sig.toDataURL()
-      });
-
-      state.approvalId = res.id;
-      $("approvalOut").textContent =
-        `APPROVED ✅\nApproval ID: ${state.approvalId}\n\n` +
-        `Download PDF: /api/approval/${state.approvalId}/pdf\n\n` +
-        `Next: Sign invoice for payment acknowledgement below.`;
-
-      $("invoiceCard").classList.remove("hidden");
-      $("invoiceOut").textContent = `Approval ID: ${state.approvalId}\nReady to sign invoice.`;
-
-      if (state.ownerMode) await refreshOwner();
-    });
-
-    $("paySign").addEventListener("click", async () => {
-      if (!state.approvalId) return alert("Approve the estimate first.");
-      if (paySig.isEmpty()) return alert("Please sign in the invoice box.");
-
-      const res = await jpost("/api/invoice", {
-        approval_id: state.approvalId,
-        payment_signature_data_url: paySig.toDataURL()
-      });
-
-      state.invoiceId = res.id;
-      $("invoiceOut").textContent =
-        `PAYMENT ACKNOWLEDGEMENT ✅\nInvoice ID: ${state.invoiceId}\n\n` +
-        `Download PDF: /api/invoice/${state.invoiceId}/pdf`;
-
-      if (state.ownerMode) await refreshOwner();
-    });
-
-  } catch (err) {
-    console.error(err);
-    alert("Failed to initialize UI. Check server logs / browser console.\n\n" + err.message);
   }
-}
+});
 
-async function onYear() {
-  $("make").disabled = true;
-  $("model").disabled = true;
-  setOptions($("make"), [], "Loading makes...");
-  setOptions($("model"), [], "Select a model");
-
-  const y = $("year").value;
-  if (!y) {
-    setOptions($("make"), [], "Select make");
-    $("make").disabled = true;
-    return;
-  }
-
-  const data = await jget(`/vehicle/makes?year=${encodeURIComponent(y)}`);
-  setOptions($("make"), data.makes || [], "Select make");
-  $("make").disabled = false;
-}
-
-async function onMake() {
-  $("model").disabled = true;
-  setOptions($("model"), [], "Loading models...");
-
-  const y = $("year").value;
-  const m = $("make").value;
-  if (!y || !m) {
-    setOptions($("model"), [], "Select a model");
-    $("model").disabled = true;
-    return;
-  }
-
-  const data = await jget(`/vehicle/models?year=${encodeURIComponent(y)}&make=${encodeURIComponent(m)}`);
-  setOptions($("model"), data.models || [], "Select a model");
-  $("model").disabled = false;
-}
-
-function onCategory() {
-  const key = $("category").value;
-  const cat = (state.catalog.categories || []).find(c => c.key === key);
-  const services = (cat?.services || []).map(s => ({ value: s.code, label: s.name }));
-  setOptions($("service"), services, "Select a service");
-  $("service").disabled = !services.length;
-}
-
-async function onEstimate() {
-  try {
-    const zip = $("zip").value.trim();
-    const year = $("year").value;
-    const make = $("make").value;
-    const model = $("model").value;
-    const category_key = $("category").value;
-    const service_code = $("service").value;
-    const parts_price = $("parts").value;
-
-    if (!zip || zip.length < 5) return alert("Enter a valid ZIP.");
-    if (!year) return alert("Select a year.");
-    if (!make) return alert("Select a make.");
-    if (!model) return alert("Select a model.");
-    if (!category_key) return alert("Select a category.");
-    if (!service_code) return alert("Select a service.");
-
-    state.estimate = await jpost("/api/estimate", {
-      zip, year, make, model, category_key, service_code, parts_price
-    });
-
-    $("estimateCard").classList.remove("hidden");
-    $("invoiceCard").classList.add("hidden");
-    $("approvalOut").textContent = "";
-    state.approvalId = null;
-    state.invoiceId = null;
-
-    const e = state.estimate;
-    $("estimateOut").textContent =
-      `Vehicle: ${e.vehicle.year} ${e.vehicle.make} ${e.vehicle.model}\n` +
-      `ZIP: ${e.zip}\n` +
-      `Service: ${e.category.name} — ${e.service.name}\n\n` +
-      `Labor rate: ${fmtMoney(e.labor_rate)}/hr\n` +
-      `Labor hours: ${e.labor_hours_min} – ${e.labor_hours_max}\n` +
-      `Labor: ${fmtMoney(e.labor_cost_min)} – ${fmtMoney(e.labor_cost_max)}\n` +
-      `Parts: ${fmtMoney(e.parts_price)}\n` +
-      `TOTAL: ${fmtMoney(e.total_min)} – ${fmtMoney(e.total_max)}\n`;
-  } catch (err) {
-    console.error(err);
-    alert("Estimate failed: " + err.message);
-  }
-}
-
-async function refreshOwner() {
-  if (!state.ownerMode) return;
-  if (!state.pin) {
-    $("ownerApprovals").textContent = "Owner mode requires ?pin=XXXX";
-    $("ownerInvoices").textContent = "Owner mode requires ?pin=XXXX";
-    return;
-  }
-
-  const hdrs = { "x-shop-pin": state.pin };
-
-  try {
-    const a = await jget(`/api/admin/approvals?pin=${encodeURIComponent(state.pin)}`, { headers: hdrs });
-    const i = await jget(`/api/admin/invoices?pin=${encodeURIComponent(state.pin)}`, { headers: hdrs });
-
-    $("ownerApprovals").textContent = (a.approvals || []).slice(0, 20).map(x =>
-      `• ${x.id} | ${x.customer?.name || ""} | ${x.estimate?.vehicle?.year || ""} ${x.estimate?.vehicle?.make || ""} ${x.estimate?.vehicle?.model || ""}\n  PDF: /api/approval/${x.id}/pdf`
-    ).join("\n\n") || "No approvals yet.";
-
-    $("ownerInvoices").textContent = (i.invoices || []).slice(0, 20).map(x =>
-      `• ${x.id} | approval ${x.approval_id}\n  PDF: /api/invoice/${x.id}/pdf`
-    ).join("\n\n") || "No invoices yet.";
-
-  } catch (err) {
-    $("ownerApprovals").textContent = "Owner backend error: " + err.message;
-    $("ownerInvoices").textContent = "Owner backend error: " + err.message;
-  }
-}
-
-init();
+// ---------- STARTUP ----------
+window.addEventListener("DOMContentLoaded", async () => {
+  initChoices();
+  await loadCatalog();
+  await loadYears();
+  setTab(false);
+});
