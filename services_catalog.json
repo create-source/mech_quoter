@@ -11,7 +11,7 @@
         { "code": "tire_rotation", "name": "Tire Rotation", "labor_hours_min": 0.4, "labor_hours_max": 0.8 },
         { "code": "mount_balance_4", "name": "Mount & Balance (4 Tires)", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
         { "code": "engine_air_filter", "name": "Engine Air Filter Replacement", "labor_hours_min": 0.2, "labor_hours_max": 0.6 },
-        { "code": "cabin_filter", "name": "Cabin Air Filter Replacement", "labor_hours_min": 0.3, "labor_hours_max": 0.8 },
+        { "code": "cabin_air_filter", "name": "Cabin Air Filter Replacement", "labor_hours_min": 0.3, "labor_hours_max": 0.8 },
         { "code": "wiper_blades", "name": "Wiper Blade Replacement", "labor_hours_min": 0.2, "labor_hours_max": 0.5 },
         { "code": "battery_service", "name": "Battery Terminal Cleaning", "labor_hours_min": 0.3, "labor_hours_max": 0.7 },
         { "code": "multi_point_inspection", "name": "Multi-Point Inspection", "labor_hours_min": 0.5, "labor_hours_max": 1.2 },
@@ -32,7 +32,10 @@
         { "code": "oil_pan_gasket", "name": "Oil Pan Gasket Replacement", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
         { "code": "head_gasket", "name": "Head Gasket Replacement", "labor_hours_min": 10.0, "labor_hours_max": 22.0 },
         { "code": "timing_chain", "name": "Timing Chain Service", "labor_hours_min": 6.0, "labor_hours_max": 16.0 },
-        { "code": "engine_mount", "name": "Engine Mount Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 }
+        { "code": "timing_belt", "name": "Timing Belt Replacement", "labor_hours_min": 3.5, "labor_hours_max": 7.5 },
+        { "code": "engine_mount", "name": "Engine Mount Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
+        { "code": "intake_manifold_gasket", "name": "Intake Manifold Gasket Replacement", "labor_hours_min": 3.0, "labor_hours_max": 8.0 },
+        { "code": "intake_manifold_replace", "name": "Intake Manifold Replacement", "labor_hours_min": 3.5, "labor_hours_max": 9.0 }
       ]
     },
 
@@ -45,7 +48,8 @@
         { "code": "thermostat", "name": "Thermostat Replacement", "labor_hours_min": 0.8, "labor_hours_max": 2.2 },
         { "code": "coolant_flush", "name": "Coolant Flush", "labor_hours_min": 1.0, "labor_hours_max": 2.0 },
         { "code": "coolant_leak_diag", "name": "Coolant Leak Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
-        { "code": "fan_assembly", "name": "Cooling Fan Assembly", "labor_hours_min": 1.2, "labor_hours_max": 3.5 }
+        { "code": "fan_assembly", "name": "Cooling Fan Assembly", "labor_hours_min": 1.2, "labor_hours_max": 3.5 },
+        { "code": "hose_replace", "name": "Coolant Hose Replacement (each)", "labor_hours_min": 0.7, "labor_hours_max": 2.5},
       ]
     },
 
@@ -83,7 +87,8 @@
         { "code": "trans_service", "name": "Transmission Fluid Service", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
         { "code": "clutch_replace", "name": "Clutch Replacement (Manual)", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
         { "code": "trans_mount", "name": "Transmission Mount Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.0 },
-        { "code": "trans_replacement", "name": "Transmission Replacement", "labor_hours_min": 10.0, "labor_hours_max": 18.0 }
+        { "code": "trans_replacement", "name": "Transmission Replacement", "labor_hours_min": 10.0, "labor_hours_max": 18.0 },
+        { "code": "trans_pan_gasket", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0 }
       ]
     },
 
@@ -95,7 +100,8 @@
         { "code": "ac_recharge", "name": "A/C Recharge", "labor_hours_min": 1.0, "labor_hours_max": 1.8 },
         { "code": "compressor", "name": "A/C Compressor Replacement", "labor_hours_min": 3.0, "labor_hours_max": 6.5 },
         { "code": "blower_motor", "name": "Blower Motor Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.5 },
-        { "code": "heater_core", "name": "Heater Core Replacement", "labor_hours_min": 6.0, "labor_hours_max": 12.0 }
+        { "code": "heater_core", "name": "Heater Core Replacement", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
+        { "code": "blend_door_actuator", "name": "Blend Door Actuator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 5.0 }
       ]
     },
 
@@ -129,7 +135,9 @@
         { "code": "o2_sensor", "name": "Oxygen Sensor Replacement", "labor_hours_min": 0.8, "labor_hours_max": 1.8 },
         { "code": "cat_converter", "name": "Catalytic Converter Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
         { "code": "muffler", "name": "Muffler Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
-        { "code": "evap_diag", "name": "EVAP Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 }
+        { "code": "evap_diag", "name": "EVAP Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
+        { "code": "charcoal_canister_replacement", "name": "Charcoal Canister Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.8 },
+        { "code": "exhaust_leak_repair", "name": "Exhaust Leak Repair (minor)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
     }
 
