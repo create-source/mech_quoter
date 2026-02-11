@@ -4,39 +4,64 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Repair Estimator</title>
-
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-
-  <link rel="stylesheet" href="/static/style.css">
-  <script defer src="/static/app.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
-
 <body>
-  <div class="container">
+  <div class="app">
     <h1>Repair Estimator</h1>
 
-    <label for="zip">ZIP Code</label>
-    <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 92646" />
+    <div class="field">
+      <label for="zip">ZIP Code</label>
+      <input id="zip" type="text" inputmode="numeric" placeholder="e.g. 92646" />
+    </div>
 
-    <label for="year">Year</label>
-    <select id="year"></select>
+    <div class="grid2">
+      <div class="field">
+        <label for="year">Year</label>
+        <select id="year">
+          <option value="">Select year</option>
+        </select>
+      </div>
 
-    <label for="make">Make</label>
-    <select id="make"></select>
+      <div class="field">
+        <label for="make">Make (popular only)</label>
+        <select id="make" disabled>
+          <option value="">Select make</option>
+        </select>
+      </div>
+    </div>
 
-    <label for="model">Model</label>
-    <select id="model"></select>
+    <div class="field">
+      <label for="model">Model</label>
+      <select id="model" disabled>
+        <option value="">Select a model</option>
+      </select>
+    </div>
 
-    <label for="category">Category</label>
-    <select id="category"></select>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category">
+        <option value="">Select category</option>
+      </select>
+    </div>
 
-    <label for="service">Service</label>
-    <select id="service"></select>
+    <div class="field">
+      <label for="service">Service</label>
+      <select id="service" disabled>
+        <option value="">Select a service</option>
+      </select>
+    </div>
 
-    <button id="estimateBtn" type="button">Get Estimate</button>
+    <div class="field">
+      <label for="partsPrice">Parts price (optional)</label>
+      <input id="partsPrice" type="number" min="0" step="0.01" placeholder="0.00" />
+    </div>
 
-    <div id="result" class="result"></div>
+    <button id="estimateBtn">Get Estimate</button>
+
+    <div id="result" class="result" aria-live="polite"></div>
   </div>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
