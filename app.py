@@ -1,411 +1,467 @@
 import os
-import io
 import json
-import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+import base64
+import sqlite3
+from datetime import datetime
+from typing import Optional, Dict, Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-
+from reportlab.lib.units import inch
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(APP_DIR, "data")
 STATIC_DIR = os.path.join(APP_DIR, "static")
-
 CATALOG_PATH = os.path.join(APP_DIR, "services_catalog.json")
+INDEX_PATH = os.path.join(APP_DIR, "index.html")
+DB_PATH = os.path.join(APP_DIR, "data.db")
+PDF_DIR = os.path.join(APP_DIR, "pdf")
+os.makedirs(PDF_DIR, exist_ok=True)
 
-SHOP_PIN = os.environ.get("SHOP_PIN", "1234")
-POPULAR_MAKES = {
-    "FORD", "CHEVROLET", "TOYOTA", "HONDA", "NISSAN", "DODGE", "JEEP",
-    "GMC", "HYUNDAI", "KIA", "SUBARU", "VOLKSWAGEN", "BMW", "MERCEDES-BENZ",
-    "LEXUS", "MAZDA", "AUDI", "CHRYSLER", "RAM", "ACURA", "INFINITI"
-}
+security = HTTPBasic()
 
+def env(name: str, default: str = "") -> str:
+    return os.getenv(name, default)
 
-def ensure_dirs():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(STATIC_DIR, exist_ok=True)
+ADMIN_USER = env("ADMIN_USER", "admin")
+ADMIN_PASS = env("ADMIN_PASS", "change_me")
 
+POPULAR_MAKES = [
+    "TOYOTA", "HONDA", "FORD", "CHEVROLET", "NISSAN", "HYUNDAI", "KIA",
+    "JEEP", "DODGE", "RAM", "SUBARU", "GMC", "BMW", "MERCEDES-BENZ",
+    "VOLKSWAGEN", "AUDI", "MAZDA", "LEXUS", "ACURA", "INFINITI"
+]
+
+app = FastAPI()
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+def db() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS estimates (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      customer_name TEXT,
+      customer_phone TEXT,
+      customer_email TEXT,
+      zip_code TEXT,
+      year TEXT,
+      make TEXT,
+      model TEXT,
+      category_key TEXT,
+      category_name TEXT,
+      service_code TEXT,
+      service_name TEXT,
+      labor_rate REAL,
+      labor_hours REAL,
+      parts_price REAL,
+      notes TEXT,
+      subtotal REAL,
+      tax_rate REAL,
+      tax_amount REAL,
+      total REAL,
+      approval_signature_path TEXT,
+      approval_signed_at TEXT,
+      invoice_status TEXT,
+      payment_signature_path TEXT,
+      payment_signed_at TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def require_admin(creds: HTTPBasicCredentials = Depends(security)):
+    if creds.username != ADMIN_USER or creds.password != ADMIN_PASS:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
 
 def load_catalog() -> Dict[str, Any]:
     if not os.path.exists(CATALOG_PATH):
-        raise HTTPException(status_code=500, detail="services_catalog.json not found")
+        raise HTTPException(500, f"Missing {os.path.basename(CATALOG_PATH)}")
     try:
         with open(CATALOG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"services_catalog.json invalid JSON: {e}")
-
-
-def save_json(path: str, obj: Any):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-
-
-def read_json(path: str, default: Any):
-    if not os.path.exists(path):
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
+        raise HTTPException(500, f"Invalid JSON in services_catalog.json: {e}")
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.utcnow().isoformat() + "Z"
 
+def make_id(prefix: str) -> str:
+    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    return f"{prefix}_{ts}"
 
-def require_owner(request: Request):
-    pin = request.headers.get("x-shop-pin") or request.query_params.get("pin") or ""
-    if pin != SHOP_PIN:
-        raise HTTPException(status_code=401, detail="Unauthorized (bad PIN)")
+def save_base64_png(data_url: str, filename: str) -> str:
+    # expects: data:image/png;base64,XXXX
+    if not data_url.startswith("data:image/png;base64,"):
+        raise HTTPException(400, "Signature must be a PNG data URL")
+    b64 = data_url.split(",", 1)[1]
+    raw = base64.b64decode(b64)
+    path = os.path.join(PDF_DIR, filename)
+    with open(path, "wb") as f:
+        f.write(raw)
+    return path
 
+def money(x: float) -> str:
+    return f"${x:,.2f}"
 
-app = FastAPI()
-ensure_dirs()
+def gen_estimate_pdf(row: sqlite3.Row) -> str:
+    pdf_path = os.path.join(PDF_DIR, f"{row['id']}_estimate.pdf")
+    c = canvas.Canvas(pdf_path, pagesize=letter)
+    w, h = letter
 
-# Serve /static/*
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(1*inch, h-1*inch, "Estimate")
 
+    c.setFont("Helvetica", 10)
+    c.drawString(1*inch, h-1.3*inch, f"Estimate ID: {row['id']}")
+    c.drawString(1*inch, h-1.5*inch, f"Created: {row['created_at']}")
+
+    y = h - 2.0*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Customer")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Name: {row['customer_name'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Phone: {row['customer_phone'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Email: {row['customer_email'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"ZIP: {row['zip_code'] or ''}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Vehicle")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Service")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Category: {row['category_name'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Service: {row['service_name'] or ''}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Pricing")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Labor Rate: {money(row['labor_rate'] or 0)} / hr")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Labor Hours: {row['labor_hours'] or 0}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Parts Price: {money(row['parts_price'] or 0)}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Subtotal: {money(row['subtotal'] or 0)}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Tax: {money(row['tax_amount'] or 0)} (rate {int((row['tax_rate'] or 0)*100)}%)")
+    y -= 0.2*inch
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(1*inch, y, f"Total: {money(row['total'] or 0)}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Notes")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, (row["notes"] or "")[:120])
+
+    if row["approval_signature_path"] and os.path.exists(row["approval_signature_path"]):
+        y -= 0.6*inch
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(1*inch, y, "Customer Approval Signature")
+        y -= 0.2*inch
+        c.drawImage(row["approval_signature_path"], 1*inch, y-1.0*inch, width=2.5*inch, height=1.0*inch, mask='auto')
+        c.setFont("Helvetica", 9)
+        c.drawString(3.7*inch, y-0.2*inch, f"Signed: {row['approval_signed_at'] or ''}")
+
+    c.showPage()
+    c.save()
+    return pdf_path
+
+def gen_invoice_pdf(row: sqlite3.Row) -> str:
+    pdf_path = os.path.join(PDF_DIR, f"{row['id']}_invoice.pdf")
+    c = canvas.Canvas(pdf_path, pagesize=letter)
+    w, h = letter
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(1*inch, h-1*inch, "Invoice")
+
+    c.setFont("Helvetica", 10)
+    c.drawString(1*inch, h-1.3*inch, f"Estimate ID: {row['id']}")
+    c.drawString(1*inch, h-1.5*inch, f"Created: {row['created_at']}")
+    c.drawString(1*inch, h-1.7*inch, f"Invoice Status: {row['invoice_status'] or 'not set'}")
+
+    y = h - 2.2*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Customer")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Name: {row['customer_name'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Phone: {row['customer_phone'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"Email: {row['customer_email'] or ''}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Vehicle / Service")
+    c.setFont("Helvetica", 10)
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}")
+    y -= 0.2*inch
+    c.drawString(1*inch, y, f"{row['category_name'] or ''} — {row['service_name'] or ''}")
+
+    y -= 0.4*inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Amount Due")
+    c.setFont("Helvetica-Bold", 12)
+    y -= 0.25*inch
+    c.drawString(1*inch, y, f"Total: {money(row['total'] or 0)}")
+
+    if row["payment_signature_path"] and os.path.exists(row["payment_signature_path"]):
+        y -= 0.6*inch
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(1*inch, y, "Payment Acknowledgement Signature")
+        y -= 0.2*inch
+        c.drawImage(row["payment_signature_path"], 1*inch, y-1.0*inch, width=2.5*inch, height=1.0*inch, mask='auto')
+        c.setFont("Helvetica", 9)
+        c.drawString(3.7*inch, y-0.2*inch, f"Signed: {row['payment_signed_at'] or ''}")
+
+    c.showPage()
+    c.save()
+    return pdf_path
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    index_path = os.path.join(APP_DIR, "index.html")
-    if not os.path.exists(index_path):
-        return HTMLResponse("<h1>Missing index.html</h1>", status_code=500)
-    with open(index_path, "r", encoding="utf-8") as f:
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(500, "index.html missing in root")
+    with open(INDEX_PATH, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
+@app.get("/catalog")
+def catalog():
+    return JSONResponse(load_catalog())
 
-# -----------------------------
-# Vehicle endpoints (NHTSA)
-# -----------------------------
 @app.get("/vehicle/years")
 def vehicle_years():
-    current_year = datetime.now().year
-    years = list(range(current_year, 1980, -1))
-    return {"years": years}
-
+    # keep it simple & fast
+    return list(range(datetime.now().year, 1980, -1))
 
 @app.get("/vehicle/makes")
-def vehicle_makes(year: int):
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
-    # Hard-limit to popular makes (your requirement)
-    makes = [m for m in makes if m in POPULAR_MAKES]
-    return {"makes": makes}
-
+async def vehicle_makes(year: int):
+    # Hard-limit to “popular makes”
+    return POPULAR_MAKES
 
 @app.get("/vehicle/models")
-def vehicle_models(year: int, make: str):
-    make = make.upper().strip()
+async def vehicle_models(year: int, make: str):
+    # NHTSA endpoint (public) – returns common models
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    models = sorted({(m.get("Model_Name") or "").strip() for m in results if m.get("Model_Name")})
-    return {"models": models}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            data = r.json()
+    except Exception:
+        return []
 
+    results = data.get("Results") or []
+    models = sorted({(x.get("Model_Name") or "").strip() for x in results if x.get("Model_Name")})
+    return models
 
-# -----------------------------
-# Catalog + estimate
-# -----------------------------
-@app.get("/api/catalog")
-def api_catalog():
-    return load_catalog()
+@app.post("/estimate")
+async def create_estimate(payload: Dict[str, Any]):
+    cat = load_catalog()
+    labor_rate = float(payload.get("labor_rate") or cat.get("labor_rate") or 90)
+    tax_rate = float(payload.get("tax_rate") or 0.0)
 
+    labor_hours = float(payload.get("labor_hours") or 0.0)
+    parts_price = float(payload.get("parts_price") or 0.0)
+    subtotal = labor_rate * labor_hours + parts_price
+    tax_amount = subtotal * tax_rate
+    total = subtotal + tax_amount
 
-@app.post("/api/estimate")
-async def api_estimate(payload: Dict[str, Any]):
-    """
-    payload:
-      year, make, model, zip, category_key, service_code, parts_price(optional)
-    """
-    catalog = load_catalog()
-    labor_rate = float(catalog.get("labor_rate", 90))
-
-    category_key = payload.get("category_key")
-    service_code = payload.get("service_code")
-
-    categories = catalog.get("categories", [])
-    cat = next((c for c in categories if c.get("key") == category_key), None)
-    if not cat:
-        raise HTTPException(status_code=400, detail="Invalid category_key")
-    svc = next((s for s in cat.get("services", []) if s.get("code") == service_code), None)
-    if not svc:
-        raise HTTPException(status_code=400, detail="Invalid service_code")
-
-    hours_min = float(svc.get("labor_hours_min", 0))
-    hours_max = float(svc.get("labor_hours_max", hours_min))
-    parts_price = payload.get("parts_price")
-    parts_price = float(parts_price) if parts_price not in (None, "") else 0.0
-
-    labor_min = round(hours_min * labor_rate, 2)
-    labor_max = round(hours_max * labor_rate, 2)
-    total_min = round(labor_min + parts_price, 2)
-    total_max = round(labor_max + parts_price, 2)
-
-    return {
+    est_id = make_id("EST")
+    row = {
+        "id": est_id,
+        "created_at": now_iso(),
+        "status": "draft",
+        "invoice_status": "none",
+        "customer_name": payload.get("customer_name"),
+        "customer_phone": payload.get("customer_phone"),
+        "customer_email": payload.get("customer_email"),
+        "zip_code": payload.get("zip_code"),
+        "year": payload.get("year"),
+        "make": payload.get("make"),
+        "model": payload.get("model"),
+        "category_key": payload.get("category_key"),
+        "category_name": payload.get("category_name"),
+        "service_code": payload.get("service_code"),
+        "service_name": payload.get("service_name"),
         "labor_rate": labor_rate,
-        "category": {"key": cat.get("key"), "name": cat.get("name")},
-        "service": {"code": svc.get("code"), "name": svc.get("name")},
-        "labor_hours_min": hours_min,
-        "labor_hours_max": hours_max,
-        "labor_cost_min": labor_min,
-        "labor_cost_max": labor_max,
+        "labor_hours": labor_hours,
         "parts_price": parts_price,
-        "total_min": total_min,
-        "total_max": total_max,
-        "vehicle": {
-            "year": payload.get("year"),
-            "make": payload.get("make"),
-            "model": payload.get("model"),
-        },
-        "zip": payload.get("zip"),
+        "notes": payload.get("notes"),
+        "subtotal": subtotal,
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
+        "total": total,
+        "approval_signature_path": None,
+        "approval_signed_at": None,
+        "payment_signature_path": None,
+        "payment_signed_at": None
     }
 
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+      INSERT INTO estimates (
+        id, created_at, status, customer_name, customer_phone, customer_email, zip_code,
+        year, make, model, category_key, category_name, service_code, service_name,
+        labor_rate, labor_hours, parts_price, notes, subtotal, tax_rate, tax_amount, total,
+        approval_signature_path, approval_signed_at, invoice_status, payment_signature_path, payment_signed_at
+      ) VALUES (
+        :id, :created_at, :status, :customer_name, :customer_phone, :customer_email, :zip_code,
+        :year, :make, :model, :category_key, :category_name, :service_code, :service_name,
+        :labor_rate, :labor_hours, :parts_price, :notes, :subtotal, :tax_rate, :tax_amount, :total,
+        :approval_signature_path, :approval_signed_at, :invoice_status, :payment_signature_path, :payment_signed_at
+      )
+    """, row)
+    conn.commit()
+    conn.close()
 
-# -----------------------------
-# Approvals + invoices storage
-# -----------------------------
-APPROVALS_PATH = os.path.join(DATA_DIR, "approvals.json")
-INVOICES_PATH = os.path.join(DATA_DIR, "invoices.json")
+    return {"ok": True, "id": est_id, "totals": {"subtotal": subtotal, "tax": tax_amount, "total": total}}
 
+@app.get("/estimate/{est_id}")
+def get_estimate(est_id: str):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM estimates WHERE id=?", (est_id,))
+    r = cur.fetchone()
+    conn.close()
+    if not r:
+        raise HTTPException(404, "Estimate not found")
+    return dict(r)
 
-@app.post("/api/approval")
-async def api_approval(payload: Dict[str, Any]):
-    """
-    Customer signs estimate => approval
+@app.post("/estimate/{est_id}/approve")
+def approve_estimate(est_id: str, payload: Dict[str, Any]):
+    signature = payload.get("signature_png")
+    if not signature:
+        raise HTTPException(400, "Missing signature_png")
 
-    payload:
-      customer_name, customer_email(optional), customer_phone(optional)
-      estimate (object from /api/estimate)
-      signature_data_url (data:image/png;base64,...)
-    """
-    if not payload.get("signature_data_url"):
-        raise HTTPException(status_code=400, detail="Missing signature_data_url")
+    sig_path = save_base64_png(signature, f"{est_id}_approval.png")
+    signed_at = now_iso()
 
-    approvals = read_json(APPROVALS_PATH, default=[])
-    approval_id = str(uuid.uuid4())
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+      UPDATE estimates
+      SET status='approved', approval_signature_path=?, approval_signed_at=?
+      WHERE id=?
+    """, (sig_path, signed_at, est_id))
+    conn.commit()
 
-    record = {
-        "id": approval_id,
-        "created_at": now_iso(),
-        "customer": {
-            "name": payload.get("customer_name", "").strip(),
-            "email": payload.get("customer_email", "").strip(),
-            "phone": payload.get("customer_phone", "").strip(),
-        },
-        "estimate": payload.get("estimate"),
-        "signature_data_url": payload.get("signature_data_url"),
-        "status": "approved",
-    }
-    approvals.insert(0, record)
-    save_json(APPROVALS_PATH, approvals)
-    return {"id": approval_id}
+    cur.execute("SELECT * FROM estimates WHERE id=?", (est_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Estimate not found")
 
+    gen_estimate_pdf(row)
+    return {"ok": True, "status": "approved"}
 
-@app.get("/api/approval/{approval_id}")
-def api_get_approval(approval_id: str):
-    approvals = read_json(APPROVALS_PATH, default=[])
-    rec = next((a for a in approvals if a.get("id") == approval_id), None)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Approval not found")
-    return rec
+@app.get("/estimate/{est_id}/pdf")
+def estimate_pdf(est_id: str):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM estimates WHERE id=?", (est_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Estimate not found")
+    pdf_path = os.path.join(PDF_DIR, f"{est_id}_estimate.pdf")
+    if not os.path.exists(pdf_path):
+        pdf_path = gen_estimate_pdf(row)
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{est_id}_estimate.pdf")
 
+# -------------------- OWNER / BACKEND MODE --------------------
 
-@app.post("/api/invoice")
-async def api_create_invoice(payload: Dict[str, Any]):
-    """
-    Invoice signature => payment acknowledgement
+@app.get("/admin/estimates")
+def admin_list_estimates(_: bool = Depends(require_admin)):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, created_at, status, invoice_status, customer_name, year, make, model, total FROM estimates ORDER BY created_at DESC LIMIT 200")
+    rows = [dict(x) for x in cur.fetchall()]
+    conn.close()
+    return rows
 
-    payload:
-      approval_id
-      payment_signature_data_url (data:image/png;base64,...)
-    """
-    approval_id = payload.get("approval_id")
-    pay_sig = payload.get("payment_signature_data_url")
-    if not approval_id:
-        raise HTTPException(status_code=400, detail="Missing approval_id")
-    if not pay_sig:
-        raise HTTPException(status_code=400, detail="Missing payment_signature_data_url")
+@app.post("/admin/estimate/{est_id}/mark_invoiced")
+def admin_mark_invoiced(est_id: str, _: bool = Depends(require_admin)):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("UPDATE estimates SET invoice_status='issued' WHERE id=?", (est_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "invoice_status": "issued"}
 
-    approvals = read_json(APPROVALS_PATH, default=[])
-    appr = next((a for a in approvals if a.get("id") == approval_id), None)
-    if not appr:
-        raise HTTPException(status_code=404, detail="Approval not found")
+@app.post("/invoice/{est_id}/ack_payment")
+def invoice_ack_payment(est_id: str, payload: Dict[str, Any]):
+    # Customer payment acknowledgement signature
+    signature = payload.get("signature_png")
+    if not signature:
+        raise HTTPException(400, "Missing signature_png")
 
-    invoices = read_json(INVOICES_PATH, default=[])
-    invoice_id = str(uuid.uuid4())
-    rec = {
-        "id": invoice_id,
-        "created_at": now_iso(),
-        "approval_id": approval_id,
-        "customer": appr.get("customer"),
-        "estimate": appr.get("estimate"),
-        "payment_signature_data_url": pay_sig,
-        "status": "payment_acknowledged",
-    }
-    invoices.insert(0, rec)
-    save_json(INVOICES_PATH, invoices)
-    return {"id": invoice_id}
+    sig_path = save_base64_png(signature, f"{est_id}_payment.png")
+    signed_at = now_iso()
 
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+      UPDATE estimates
+      SET invoice_status='paid_acknowledged', payment_signature_path=?, payment_signed_at=?
+      WHERE id=?
+    """, (sig_path, signed_at, est_id))
+    conn.commit()
 
-@app.get("/api/invoice/{invoice_id}")
-def api_get_invoice(invoice_id: str):
-    invoices = read_json(INVOICES_PATH, default=[])
-    rec = next((i for i in invoices if i.get("id") == invoice_id), None)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return rec
+    cur.execute("SELECT * FROM estimates WHERE id=?", (est_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Estimate not found")
 
+    gen_invoice_pdf(row)
+    return {"ok": True, "invoice_status": "paid_acknowledged"}
 
-# Owner backend list endpoints
-@app.get("/api/admin/approvals")
-def admin_list_approvals(request: Request):
-    require_owner(request)
-    return {"approvals": read_json(APPROVALS_PATH, default=[])}
-
-
-@app.get("/api/admin/invoices")
-def admin_list_invoices(request: Request):
-    require_owner(request)
-    return {"invoices": read_json(INVOICES_PATH, default=[])}
-
-
-# -----------------------------
-# PDF helpers
-# -----------------------------
-def _data_url_to_imagereader(data_url: str) -> ImageReader:
-    # data:image/png;base64,....
-    if "," not in data_url:
-        raise ValueError("Bad data URL")
-    header, b64 = data_url.split(",", 1)
-    raw = io.BytesIO(__import__("base64").b64decode(b64))
-    return ImageReader(raw)
-
-
-def build_estimate_pdf(approval: Dict[str, Any]) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=letter)
-    w, h = letter
-
-    est = approval.get("estimate", {}) or {}
-    cust = approval.get("customer", {}) or {}
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(50, h - 60, "APPROVED ESTIMATE")
-
-    c.setFont("Helvetica", 11)
-    c.drawString(50, h - 90, f"Estimate ID: {approval.get('id')}")
-    c.drawString(50, h - 110, f"Date: {approval.get('created_at')}")
-    c.drawString(50, h - 130, f"Customer: {cust.get('name','')}")
-    c.drawString(50, h - 150, f"Email: {cust.get('email','')}")
-    c.drawString(50, h - 170, f"Phone: {cust.get('phone','')}")
-
-    veh = est.get("vehicle", {}) or {}
-    c.drawString(50, h - 200, f"Vehicle: {veh.get('year')} {veh.get('make')} {veh.get('model')}")
-    c.drawString(50, h - 220, f"ZIP: {est.get('zip','')}")
-
-    cat = est.get("category", {}) or {}
-    svc = est.get("service", {}) or {}
-    c.drawString(50, h - 250, f"Category: {cat.get('name','')}")
-    c.drawString(50, h - 270, f"Service: {svc.get('name','')}")
-
-    c.drawString(50, h - 310, f"Labor rate: ${est.get('labor_rate', 0):.2f}/hr")
-    c.drawString(50, h - 330, f"Labor hours: {est.get('labor_hours_min','')} – {est.get('labor_hours_max','')}")
-    c.drawString(50, h - 350, f"Labor: ${est.get('labor_cost_min',0):.2f} – ${est.get('labor_cost_max',0):.2f}")
-    c.drawString(50, h - 370, f"Parts: ${est.get('parts_price',0):.2f}")
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, h - 395, f"Total: ${est.get('total_min',0):.2f} – ${est.get('total_max',0):.2f}")
-
-    c.setFont("Helvetica", 10)
-    c.drawString(50, 140, "Customer Signature (Approval):")
-    sig = _data_url_to_imagereader(approval["signature_data_url"])
-    c.drawImage(sig, 50, 60, width=240, height=70, preserveAspectRatio=True, mask="auto")
-    c.drawString(50, 45, "By signing, customer approves this estimate.")
-
-    c.showPage()
-    c.save()
-    return buf.getvalue()
-
-
-def build_invoice_pdf(invoice: Dict[str, Any]) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=letter)
-    w, h = letter
-
-    est = invoice.get("estimate", {}) or {}
-    cust = invoice.get("customer", {}) or {}
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(50, h - 60, "INVOICE")
-
-    c.setFont("Helvetica", 11)
-    c.drawString(50, h - 90, f"Invoice ID: {invoice.get('id')}")
-    c.drawString(50, h - 110, f"Related Approval ID: {invoice.get('approval_id')}")
-    c.drawString(50, h - 130, f"Date: {invoice.get('created_at')}")
-
-    c.drawString(50, h - 160, f"Customer: {cust.get('name','')}")
-    c.drawString(50, h - 180, f"Email: {cust.get('email','')}")
-    c.drawString(50, h - 200, f"Phone: {cust.get('phone','')}")
-
-    veh = est.get("vehicle", {}) or {}
-    c.drawString(50, h - 230, f"Vehicle: {veh.get('year')} {veh.get('make')} {veh.get('model')}")
-    c.drawString(50, h - 250, f"ZIP: {est.get('zip','')}")
-
-    cat = est.get("category", {}) or {}
-    svc = est.get("service", {}) or {}
-    c.drawString(50, h - 280, f"Service: {cat.get('name','')} — {svc.get('name','')}")
-
-    c.drawString(50, h - 320, f"Labor: ${est.get('labor_cost_min',0):.2f} – ${est.get('labor_cost_max',0):.2f}")
-    c.drawString(50, h - 340, f"Parts: ${est.get('parts_price',0):.2f}")
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, h - 365, f"Amount Due: ${est.get('total_min',0):.2f} – ${est.get('total_max',0):.2f}")
-
-    c.setFont("Helvetica", 10)
-    c.drawString(50, 140, "Customer Signature (Payment Acknowledgement):")
-    sig = _data_url_to_imagereader(invoice["payment_signature_data_url"])
-    c.drawImage(sig, 50, 60, width=240, height=70, preserveAspectRatio=True, mask="auto")
-    c.drawString(50, 45, "By signing, customer acknowledges payment obligation/receipt per shop policy.")
-
-    c.showPage()
-    c.save()
-    return buf.getvalue()
-
-
-@app.get("/api/approval/{approval_id}/pdf")
-def approval_pdf(approval_id: str):
-    approvals = read_json(APPROVALS_PATH, default=[])
-    rec = next((a for a in approvals if a.get("id") == approval_id), None)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Approval not found")
-    pdf_bytes = build_estimate_pdf(rec)
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="estimate_{approval_id}.pdf"'},
-    )
-
-
-@app.get("/api/invoice/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: str):
-    invoices = read_json(INVOICES_PATH, default=[])
-    rec = next((i for i in invoices if i.get("id") == invoice_id), None)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    pdf_bytes = build_invoice_pdf(rec)
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="invoice_{invoice_id}.pdf"'},
-    )
+@app.get("/invoice/{est_id}/pdf")
+def invoice_pdf(est_id: str):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM estimates WHERE id=?", (est_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Estimate not found")
+    pdf_path = os.path.join(PDF_DIR, f"{est_id}_invoice.pdf")
+    if not os.path.exists(pdf_path):
+        pdf_path = gen_invoice_pdf(row)
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{est_id}_invoice.pdf")
