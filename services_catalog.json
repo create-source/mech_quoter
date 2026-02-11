@@ -4,297 +4,52 @@
       "key": "maintenance",
       "name": "Maintenance",
       "services": [
-        {
-          "code": "oil_and_filter_change",
-          "name": "Oil & Filter Change",
-          "labor_hours_min": 0.5,
-          "labor_hours_max": 0.9,
-          "flat_rate_min": 60,
-          "flat_rate_max": 120
-        },
-        {
-          "code": "synthetic_oil_change",
-          "name": "Synthetic Oil Change",
-          "labor_hours_min": 0.6,
-          "labor_hours_max": 1.0,
-          "flat_rate_min": 80,
-          "flat_rate_max": 160
-        },
-        {
-          "code": "tire_rotation",
-          "name": "Tire Rotation",
-          "labor_hours_min": 0.4,
-          "labor_hours_max": 0.8,
-          "flat_rate_min": 35,
-          "flat_rate_max": 90
-        },
-        {
-          "code": "balance_tires_4",
-          "name": "Balance Tires (4)",
-          "labor_hours_min": 0.7,
-          "labor_hours_max": 1.2,
-          "flat_rate_min": 80,
-          "flat_rate_max": 160
-        },
-        {
-          "code": "engine_air_filter_replacement",
-          "name": "Engine Air Filter Replacement",
-          "labor_hours_min": 0.2,
-          "labor_hours_max": 0.5,
-          "flat_rate_min": 30,
-          "flat_rate_max": 90
-        },
-        {
-          "code": "cabin_air_filter_replacement",
-          "name": "Cabin Air Filter Replacement",
-          "labor_hours_min": 0.3,
-          "labor_hours_max": 0.8,
-          "flat_rate_min": 50,
-          "flat_rate_max": 140
-        },
-        {
-          "code": "wiper_blade_replacement_pair",
-          "name": "Wiper Blade Replacement (pair)",
-          "labor_hours_min": 0.2,
-          "labor_hours_max": 0.4,
-          "flat_rate_min": 25,
-          "flat_rate_max": 75
-        },
-        {
-          "code": "battery_terminal_cleaning",
-          "name": "Battery Terminal Cleaning",
-          "labor_hours_min": 0.3,
-          "labor_hours_max": 0.7,
-          "flat_rate_min": 35,
-          "flat_rate_max": 110
-        },
-        {
-          "code": "fuel_system_cleaner_service",
-          "name": "Fuel System Cleaner Service",
-          "labor_hours_min": 0.5,
-          "labor_hours_max": 1.0,
-          "flat_rate_min": 80,
-          "flat_rate_max": 170
-        },
-        {
-          "code": "multi_point_inspection",
-          "name": "Multi-point Inspection",
-          "labor_hours_min": 0.5,
-          "labor_hours_max": 1.2,
-          "flat_rate_min": 50,
-          "flat_rate_max": 140
-        },
-        {
-          "code": "serpentine_belt_replacement",
-          "name": "Serpentine Belt Replacement",
-          "labor_hours_min": 0.8,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 120,
-          "flat_rate_max": 260
-        },
-        {
-          "code": "spark_plug_replacement_4_cyl",
-          "name": "Spark Plug Replacement (4-cyl)",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 2.2,
-          "flat_rate_min": 180,
-          "flat_rate_max": 420
-        },
-        {
-          "code": "spark_plug_replacement_v6_v8",
-          "name": "Spark Plug Replacement (V6/V8)",
-          "labor_hours_min": 1.5,
-          "labor_hours_max": 4.5,
-          "flat_rate_min": 260,
-          "flat_rate_max": 650
-        },
-        {
-          "code": "brake_inspection",
-          "name": "Brake Inspection",
-          "labor_hours_min": 0.4,
-          "labor_hours_max": 0.9,
-          "flat_rate_min": 40,
-          "flat_rate_max": 120
-        },
-        {
-          "code": "fluid_top_off",
-          "name": "Fluid Top-off",
-          "labor_hours_min": 0.2,
-          "labor_hours_max": 0.5,
-          "flat_rate_min": 20,
-          "flat_rate_max": 70
-        }
+        { "code": "oil_and_filter_change", "name": "Oil & Filter Change", "labor_hours_min": 0.5, "labor_hours_max": 0.9, "flat_rate_min": 60, "flat_rate_max": 120 },
+        { "code": "synthetic_oil_change", "name": "Synthetic Oil Change", "labor_hours_min": 0.6, "labor_hours_max": 1.0, "flat_rate_min": 80, "flat_rate_max": 160 },
+        { "code": "tire_rotation", "name": "Tire Rotation", "labor_hours_min": 0.4, "labor_hours_max": 0.8, "flat_rate_min": 35, "flat_rate_max": 90 },
+        { "code": "balance_tires_4", "name": "Balance Tires (4)", "labor_hours_min": 0.7, "labor_hours_max": 1.2, "flat_rate_min": 80, "flat_rate_max": 160 },
+        { "code": "engine_air_filter_replacement", "name": "Engine Air Filter Replacement", "labor_hours_min": 0.2, "labor_hours_max": 0.5, "flat_rate_min": 30, "flat_rate_max": 90 },
+        { "code": "cabin_air_filter_replacement", "name": "Cabin Air Filter Replacement", "labor_hours_min": 0.3, "labor_hours_max": 0.8, "flat_rate_min": 50, "flat_rate_max": 140 },
+        { "code": "serpentine_belt_replacement", "name": "Serpentine Belt Replacement", "labor_hours_min": 0.8, "labor_hours_max": 1.8, "flat_rate_min": 120, "flat_rate_max": 260 },
+        { "code": "spark_plug_replacement_v6_v8", "name": "Spark Plug Replacement (V6/V8)", "labor_hours_min": 1.5, "labor_hours_max": 4.5, "flat_rate_min": 260, "flat_rate_max": 650 }
       ]
     },
-
-    {
-      "key": "brakes",
-      "name": "Brakes",
-      "services": [
-        {
-          "code": "brake_diagnostic",
-          "name": "Brake Diagnostic",
-          "labor_hours_min": 0.8,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 90,
-          "flat_rate_max": 220
-        },
-        {
-          "code": "front_brake_pads",
-          "name": "Front Brake Pads",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 180,
-          "flat_rate_max": 380
-        },
-        {
-          "code": "rear_brake_pads",
-          "name": "Rear Brake Pads",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 180,
-          "flat_rate_max": 380
-        },
-        {
-          "code": "brake_pads_and_rotors_per_axle",
-          "name": "Brake Pads & Rotors (per axle)",
-          "labor_hours_min": 2.0,
-          "labor_hours_max": 3.5,
-          "flat_rate_min": 420,
-          "flat_rate_max": 900
-        },
-        {
-          "code": "brake_fluid_flush",
-          "name": "Brake Fluid Flush",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 120,
-          "flat_rate_max": 250
-        }
-      ]
-    },
-
     {
       "key": "cooling",
       "name": "Cooling System",
       "services": [
-        {
-          "code": "coolant_flush",
-          "name": "Coolant Flush",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 2.0,
-          "flat_rate_min": 140,
-          "flat_rate_max": 280
-        },
-        {
-          "code": "radiator_replacement",
-          "name": "Radiator Replacement",
-          "labor_hours_min": 2.0,
-          "labor_hours_max": 5.0,
-          "flat_rate_min": 650,
-          "flat_rate_max": 1500
-        },
-        {
-          "code": "water_pump_replacement",
-          "name": "Water Pump Replacement",
-          "labor_hours_min": 2.0,
-          "labor_hours_max": 6.0,
-          "flat_rate_min": 600,
-          "flat_rate_max": 1700
-        },
-        {
-          "code": "thermostat_replacement",
-          "name": "Thermostat Replacement",
-          "labor_hours_min": 0.8,
-          "labor_hours_max": 2.2,
-          "flat_rate_min": 180,
-          "flat_rate_max": 520
-        }
+        { "code": "water_pump", "name": "Water Pump Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0, "flat_rate_min": 600, "flat_rate_max": 1700 },
+        { "code": "radiator_replace", "name": "Radiator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.0, "flat_rate_min": 450, "flat_rate_max": 1200 },
+        { "code": "thermostat", "name": "Thermostat Replacement", "labor_hours_min": 1.0, "labor_hours_max": 3.0, "flat_rate_min": 220, "flat_rate_max": 650 },
+        { "code": "coolant_flush", "name": "Coolant Flush", "labor_hours_min": 1.0, "labor_hours_max": 1.8, "flat_rate_min": 140, "flat_rate_max": 260 },
+        { "code": "coolant_leak_diag", "name": "Coolant Leak Diagnosis (pressure test)", "labor_hours_min": 1.0, "labor_hours_max": 2.5, "flat_rate_min": 150, "flat_rate_max": 420 }
       ]
     },
-
     {
-      "key": "engine",
-      "name": "Engine",
+      "key": "transmission",
+      "name": "Transmission",
       "services": [
-        {
-          "code": "engine_diagnostic",
-          "name": "Engine Diagnostic",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 3.0,
-          "flat_rate_min": 120,
-          "flat_rate_max": 380
-        },
-        {
-          "code": "check_engine_light_diagnosis",
-          "name": "Check Engine Light Diagnosis",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 2.5,
-          "flat_rate_min": 120,
-          "flat_rate_max": 320
-        },
-        {
-          "code": "timing_chain_service_where_applicable",
-          "name": "Timing Chain Service (where applicable)",
-          "labor_hours_min": 6.0,
-          "labor_hours_max": 16.0,
-          "flat_rate_min": 1500,
-          "flat_rate_max": 4500
-        }
+        { "code": "trans_diag", "name": "Transmission Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0, "flat_rate_min": 150, "flat_rate_max": 450 },
+        { "code": "trans_service", "name": "Transmission Fluid Service", "labor_hours_min": 1.0, "labor_hours_max": 2.5, "flat_rate_min": 180, "flat_rate_max": 420 },
+        { "code": "trans_pan_gasket", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0, "flat_rate_min": 280, "flat_rate_max": 650 }
       ]
     },
-
     {
-      "key": "suspension",
-      "name": "Suspension & Steering",
+      "key": "brakes",
+      "name": "Brakes",
       "services": [
-        {
-          "code": "wheel_alignment",
-          "name": "Wheel Alignment",
-          "labor_hours_min": 1.0,
-          "labor_hours_max": 1.8,
-          "flat_rate_min": 90,
-          "flat_rate_max": 180
-        },
-        {
-          "code": "front_struts_pair",
-          "name": "Front Struts (pair)",
-          "labor_hours_min": 2.5,
-          "labor_hours_max": 5.0,
-          "flat_rate_min": 650,
-          "flat_rate_max": 1400
-        },
-        {
-          "code": "rear_shocks_pair",
-          "name": "Rear Shocks (pair)",
-          "labor_hours_min": 1.2,
-          "labor_hours_max": 2.5,
-          "flat_rate_min": 350,
-          "flat_rate_max": 850
-        }
+        { "code": "front_brake_pads", "name": "Front Brake Pads", "labor_hours_min": 1.0, "labor_hours_max": 1.8, "flat_rate_min": 180, "flat_rate_max": 380 },
+        { "code": "rear_brake_pads", "name": "Rear Brake Pads", "labor_hours_min": 1.0, "labor_hours_max": 1.8, "flat_rate_min": 180, "flat_rate_max": 380 },
+        { "code": "brake_rotors_per_axle", "name": "Brake Rotors (per axle)", "labor_hours_min": 1.5, "labor_hours_max": 2.8, "flat_rate_min": 300, "flat_rate_max": 650 }
       ]
     },
-
     {
-      "key": "tires",
-      "name": "Tires",
+      "key": "electrical",
+      "name": "Electrical",
       "services": [
-        {
-          "code": "mount_and_balance_4_tires",
-          "name": "Mount & Balance (4 tires)",
-          "labor_hours_min": 1.5,
-          "labor_hours_max": 3.0,
-          "flat_rate_min": 120,
-          "flat_rate_max": 260
-        },
-        {
-          "code": "tire_rotation_and_balance",
-          "name": "Tire Rotation & Balance",
-          "labor_hours_min": 0.8,
-          "labor_hours_max": 1.6,
-          "flat_rate_min": 80,
-          "flat_rate_max": 170
-        }
+        { "code": "battery_replacement", "name": "Battery Replacement", "labor_hours_min": 0.5, "labor_hours_max": 1.0, "flat_rate_min": 120, "flat_rate_max": 260 },
+        { "code": "alternator_replacement", "name": "Alternator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.0, "flat_rate_min": 400, "flat_rate_max": 950 },
+        { "code": "starter_replacement", "name": "Starter Replacement", "labor_hours_min": 1.5, "labor_hours_max": 3.5, "flat_rate_min": 350, "flat_rate_max": 850 }
       ]
     }
   ]
