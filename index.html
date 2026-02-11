@@ -2,67 +2,41 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Repair Estimator</title>
 
-  <link rel="stylesheet" href="/static/style.css" />
-
-  <!-- Optional: Choices for nicer selects -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 
+  <link rel="stylesheet" href="/static/style.css">
   <script defer src="/static/app.js"></script>
 </head>
 
 <body>
-  <main class="container">
+  <div class="container">
     <h1>Repair Estimator</h1>
 
-    <div class="grid">
-      <div class="field">
-        <label for="zip">ZIP Code</label>
-        <input id="zip" inputmode="numeric" placeholder="e.g. 92647" />
-      </div>
+    <label for="zip">ZIP Code</label>
+    <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 92646" />
 
-      <div class="field">
-        <label for="year">Year</label>
-        <select id="year">
-          <option value="">Select year</option>
-        </select>
-      </div>
+    <label for="year">Year</label>
+    <select id="year"></select>
 
-      <div class="field">
-        <label for="make">Make</label>
-        <select id="make" disabled>
-          <option value="">Select make</option>
-        </select>
-      </div>
+    <label for="make">Make</label>
+    <select id="make"></select>
 
-      <div class="field">
-        <label for="model">Model</label>
-        <select id="model" disabled>
-          <option value="">Select a model</option>
-        </select>
-      </div>
+    <label for="model">Model</label>
+    <select id="model"></select>
 
-      <div class="field">
-        <label for="category">Category</label>
-        <select id="category">
-          <option value="">Select category</option>
-        </select>
-      </div>
+    <label for="category">Category</label>
+    <select id="category"></select>
 
-      <div class="field">
-        <label for="service">Service</label>
-        <select id="service" disabled>
-          <option value="">Select a service</option>
-        </select>
-      </div>
-    </div>
+    <label for="service">Service</label>
+    <select id="service"></select>
 
-    <button id="btnEstimate" type="button">Get Estimate</button>
+    <button id="estimateBtn" type="button">Get Estimate</button>
 
-    <pre id="result" class="result" aria-live="polite"></pre>
-  </main>
+    <div id="result" class="result"></div>
+  </div>
 </body>
 </html>
