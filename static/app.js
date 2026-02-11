@@ -6,7 +6,7 @@ window.addEventListener("error", (e) => {
 // --- Searchable dropdowns (Choices.js) ---
 const _choices = {}; // store instances by element id
 
-function enhanceSelect(yearEl, "Select a year") {
+function enhanceSelect(selectEl, placeholder = "Select...") {
   if (!selectEl) return;
 
   // Only for <select>
