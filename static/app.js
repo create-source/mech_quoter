@@ -1,329 +1,295 @@
-console.log("app.js loaded ✅");
+/* global Choices */
+(() => {
+  const $ = (id) => document.getElementById(id);
 
-window.addEventListener("error", (e) => {
-  console.error("JS Error:", e.message, e.filename, e.lineno);
-});
+  const els = {
+    zip: $("zip"),
+    partsPrice: $("partsPrice"),
+    laborPricing: $("laborPricing"),
+    laborHours: $("laborHours"),
+    flatLabor: $("flatLabor"),
+    vehicleType: $("vehicleType"),
+    year: $("year"),
+    make: $("make"),
+    model: $("model"),
+    category: $("category"),
+    service: $("service"),
+    btnEstimate: $("btnEstimate"),
+    result: $("result"),
+  };
 
-function el(id) {
-  return document.getElementById(id);
-}
-
-function setSelectOptions(selectEl, values, placeholder = "Select...") {
-  if (!selectEl) return;
-  selectEl.innerHTML = "";
-
-  const ph = document.createElement("option");
-  ph.value = "";
-  ph.textContent = placeholder;
-  ph.disabled = true;
-  ph.selected = true;
-  selectEl.appendChild(ph);
-
-  values.forEach((v) => {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    selectEl.appendChild(opt);
-  });
-}
-
-function fillDatalist(datalistEl, rows, getLabel) {
-  if (!datalistEl) return;
-  datalistEl.innerHTML = "";
-  rows.forEach((row) => {
-    const opt = document.createElement("option");
-    opt.value = getLabel(row);
-    datalistEl.appendChild(opt);
-  });
-}
-
-async function getJSON(url) {
-  const r = await fetch(url);
-  const text = await r.text();
-  console.log("GET", url, r.status, text.slice(0, 140));
-  if (!r.ok) throw new Error(`${r.status}: ${text}`);
-  return JSON.parse(text);
-}
-
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await r.text();
-  console.log("POST", url, r.status, text.slice(0, 160));
-  if (!r.ok) throw new Error(`${r.status}: ${text}`);
-  return JSON.parse(text);
-}
-
-// ---------------- ZIP datalist (Orange County) ----------------
-const OC_ZIPS = [
-  "90620","90621","90630","90631","90632","90680","90720",
-  "92602","92603","92604","92606","92612","92614","92617","92618","92620",
-  "92624","92625","92626","92627","92629","92630","92637",
-  "92646","92647","92648","92649","92651","92653","92656","92657",
-  "92660","92661","92662","92663",
-  "92672","92673","92675","92677","92679","92688","92691","92692",
-  "92701","92703","92704","92705","92706","92707","92708",
-  "92801","92802","92804","92805","92806","92807","92808",
-  "92821","92823","92831","92832","92833","92835",
-  "92840","92841","92843","92844","92845",
-  "92865","92866","92867","92869","92870","92861","92886","92887","92683","92684"
-];
-
-function loadZipDatalist() {
-  const list = el("zipList");
-  if (!list) return;
-  const zips = [...new Set(OC_ZIPS)].sort();
-  list.innerHTML = "";
-  zips.forEach((z) => {
-    const opt = document.createElement("option");
-    opt.value = z;
-    list.appendChild(opt);
-  });
-}
-
-// ---------------- Vehicle (Year/Make/Model) ----------------
-async function loadYears(yearEl) {
-  const years = await getJSON("/vehicle/years");
-  setSelectOptions(yearEl, years.map(String), "Select a year");
-  // set a default (optional)
-  if (years.length) yearEl.value = String(years[0]);
-}
-
-async function loadMakes(makeEl, yearVal) {
-  const makes = await getJSON(`/vehicle/makes?year=${encodeURIComponent(yearVal)}`);
-  setSelectOptions(makeEl, makes, "Select a make");
-}
-
-async function loadModels(modelEl, yearVal, makeVal) {
-  if (!makeVal) {
-    setSelectOptions(modelEl, [], "Select a model");
-    return;
-  }
-  const models = await getJSON(`/vehicle/models?year=${encodeURIComponent(yearVal)}&make=${encodeURIComponent(makeVal)}`);
-  setSelectOptions(modelEl, models, "Select a model");
-}
-
-// ---------------- Catalog (Category/Service) ----------------
-let categoriesCache = []; // [{key,name,count}]
-let servicesCacheByCategory = new Map(); // key -> services[]
-
-function keyByCategoryName(name) {
-  const n = (name || "").trim().toLowerCase();
-  const found = categoriesCache.find((c) => (c.name || "").trim().toLowerCase() === n);
-  return found ? found.key : "";
-}
-
-function codeByServiceName(services, name) {
-  const n = (name || "").trim().toLowerCase();
-  const found = services.find((s) => (s.name || "").trim().toLowerCase() === n);
-  return found ? found.code : "";
-}
-
-async function loadCategories() {
-  categoriesCache = await getJSON("/categories");
-  fillDatalist(el("categoryList"), categoriesCache, (c) => c.name);
-}
-
-async function loadServicesForCategory(categoryKey) {
-  if (!categoryKey) return [];
-  if (servicesCacheByCategory.has(categoryKey)) return servicesCacheByCategory.get(categoryKey);
-
-  const services = await getJSON(`/services/${encodeURIComponent(categoryKey)}`);
-  servicesCacheByCategory.set(categoryKey, services);
-  return services;
-}
-
-async function hydrateServicesUI(categoryKey) {
-  const services = await loadServicesForCategory(categoryKey);
-  fillDatalist(el("serviceList"), services, (s) => s.name);
-}
-
-// --- Searchable dropdowns (Choices.js) ---
-const _choices = {}; // store instances by element id
-
-function enhanceSelect(selectEl, placeholder = "Select...") {
-  if (!selectEl) return;
-
-  // Only for <select>
-  if (selectEl.tagName !== "SELECT") return;
-
-  // If library didn't load, silently skip (dropdown still works normally)
-  if (typeof Choices === "undefined") return;
-
-  const id = selectEl.id || selectEl.name;
-  if (!id) return;
-
-  // Destroy previous instance (important when you re-populate options)
-  if (_choices[id]) {
-    _choices[id].destroy();
-    delete _choices[id];
+  function setResult(obj) {
+    els.result.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
   }
 
-  _choices[id] = new Choices(selectEl, {
-    searchEnabled: true,
-    shouldSort: false,              // keep your API order
-    placeholder: true,
-    placeholderValue: placeholder,
-    searchPlaceholderValue: "Type to search...",
-    itemSelectText: "",
-    removeItemButton: false,
-  });
-}
-
-// ---------------- Main init ----------------
-document.addEventListener("DOMContentLoaded", async () => {
-  const zipEl = el("zip");
-  const partsPriceEl = el("partsPrice");
-  const laborPricingEl = el("laborPricing");
-  const vehicleTypeEl = el("vehicleType");
-
-  const yearEl = el("year");
-  const makeEl = el("make");
-  const modelEl = el("model");
-
-  const categorySearchEl = el("categorySearch");
-  const categoryEl = el("category"); // hidden
-  const serviceSearchEl = el("serviceSearch");
-  const serviceEl = el("service");   // hidden
-
-  const btn = el("estimateBtn") || el("go");
-  const resultEl = el("result");
-
-  const missing = [];
-  if (!zipEl) missing.push("zip");
-  if (!partsPriceEl) missing.push("partsPrice");
-  if (!laborPricingEl) missing.push("laborPricing");
-  if (!vehicleTypeEl) missing.push("vehicleType");
-  if (!yearEl) missing.push("year");
-  if (!makeEl) missing.push("make");
-  if (!modelEl) missing.push("model");
-  if (!categorySearchEl) missing.push("categorySearch");
-  if (!categoryEl) missing.push("category(hidden)");
-  if (!serviceSearchEl) missing.push("serviceSearch");
-  if (!serviceEl) missing.push("service(hidden)");
-  if (!btn) missing.push("estimateBtn");
-  if (!resultEl) missing.push("result");
-
-  if (missing.length) {
-    console.error("Missing elements:", missing);
-    return;
+  async function apiGet(path) {
+    const res = await fetch(path, { headers: { "Accept": "application/json" } });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status} ${res.statusText} — ${text}`);
+    }
+    return res.json();
   }
 
-  try {
-    // ZIP autofill list
-    loadZipDatalist();
-    if (!zipEl.value) zipEl.value = "92646"; // optional default
+  async function apiPost(path, body) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status} ${res.statusText} — ${text}`);
+    }
+    return res.json();
+  }
 
-    // Load vehicle
-    await loadYears(yearEl);
-    await loadMakes(makeEl, yearEl.value);
-    await loadModels(modelEl, yearEl.value, makeEl.value);
+  function clearSelect(sel, placeholderText) {
+    sel.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = placeholderText;
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
 
-    // Load catalog
+  function addOptions(sel, items, getValue, getLabel) {
+    for (const item of items) {
+      const opt = document.createElement("option");
+      opt.value = String(getValue(item) ?? "");
+      opt.textContent = String(getLabel(item) ?? "");
+      sel.appendChild(opt);
+    }
+  }
+
+  // Choices.js: make selects searchable / pretty
+  function initChoices(selectEl, placeholder) {
+    if (!window.Choices) return null;
+    return new Choices(selectEl, {
+      searchEnabled: true,
+      shouldSort: false,
+      itemSelectText: "",
+      placeholderValue: placeholder,
+      allowHTML: false,
+    });
+  }
+
+  const choices = {
+    year: null,
+    make: null,
+    model: null,
+    category: null,
+    service: null,
+  };
+
+  function refreshChoices(instance) {
+    // Choices needs setChoices when we rebuild <option>s
+    if (!instance) return;
+    instance.destroy();
+  }
+
+  function rebuildChoices() {
+    // Re-init after options change
+    choices.year = initChoices(els.year, "Select year");
+    choices.make = initChoices(els.make, "Select make");
+    choices.model = initChoices(els.model, "Select a model");
+    choices.category = initChoices(els.category, "Select category");
+    choices.service = initChoices(els.service, "Select a service");
+  }
+
+  function getVehicleQuery() {
+    const params = new URLSearchParams();
+    if (els.vehicleType.value) params.set("vehicle_type", els.vehicleType.value);
+    if (els.year.value) params.set("year", els.year.value);
+    if (els.make.value) params.set("make", els.make.value);
+    if (els.model.value) params.set("model", els.model.value);
+    return params.toString() ? `?${params.toString()}` : "";
+  }
+
+  async function loadYears() {
+    clearSelect(els.year, "Select year");
+    clearSelect(els.make, "Select make");
+    clearSelect(els.model, "Select a model");
+
+    const q = new URLSearchParams();
+    if (els.vehicleType.value) q.set("vehicle_type", els.vehicleType.value);
+    const years = await apiGet(`/vehicle/years${q.toString() ? `?${q.toString()}` : ""}`);
+    addOptions(els.year, years, (x) => x, (x) => x);
+
+    rebuildChoices();
+  }
+
+  async function loadMakes() {
+    clearSelect(els.make, "Select make");
+    clearSelect(els.model, "Select a model");
+
+    const q = new URLSearchParams();
+    if (els.vehicleType.value) q.set("vehicle_type", els.vehicleType.value);
+    if (els.year.value) q.set("year", els.year.value);
+
+    const makes = await apiGet(`/vehicle/makes${q.toString() ? `?${q.toString()}` : ""}`);
+    addOptions(els.make, makes, (x) => x, (x) => x);
+
+    rebuildChoices();
+  }
+
+  async function loadModels() {
+    clearSelect(els.model, "Select a model");
+
+    const q = new URLSearchParams();
+    if (els.vehicleType.value) q.set("vehicle_type", els.vehicleType.value);
+    if (els.year.value) q.set("year", els.year.value);
+    if (els.make.value) q.set("make", els.make.value);
+
+    const models = await apiGet(`/vehicle/models${q.toString() ? `?${q.toString()}` : ""}`);
+    addOptions(els.model, models, (x) => x, (x) => x);
+
+    rebuildChoices();
+  }
+
+  async function loadCategories() {
+    clearSelect(els.category, "Select category");
+    clearSelect(els.service, "Select a service");
+
+    const cats = await apiGet(`/categories${getVehicleQuery()}`);
+
+    // cats is a LIST of objects like: {key,name,count}
+    addOptions(
+      els.category,
+      cats,
+      (c) => c.key,
+      (c) => c.name
+    );
+
+    rebuildChoices();
+  }
+
+  async function loadServices() {
+    clearSelect(els.service, "Select a service");
+    const catKey = els.category.value;
+    if (!catKey) {
+      rebuildChoices();
+      return;
+    }
+
+    const svcs = await apiGet(`/services/${encodeURIComponent(catKey)}${getVehicleQuery()}`);
+
+    // svcs is a LIST of objects like: {id,name,hrs}
+    addOptions(
+      els.service,
+      svcs,
+      (s) => s.id,
+      (s) => (s.hrs ? `${s.name} (${s.hrs}h)` : s.name)
+    );
+
+    rebuildChoices();
+  }
+
+  function syncLaborInputs() {
+    const pricing = els.laborPricing.value;
+    const hourly = pricing === "hourly";
+
+    els.laborHours.disabled = !hourly;
+    els.flatLabor.disabled = hourly;
+
+    if (hourly) els.flatLabor.value = "";
+    else els.laborHours.value = "";
+  }
+
+  async function doEstimate() {
+    const zip = (els.zip.value || "").trim();
+    if (!zip) return setResult("Enter a ZIP code.");
+
+    const laborPricing = els.laborPricing.value;
+    const partsPrice = Number(els.partsPrice.value || 0);
+
+    // If a service is chosen and label contains "(Xh)" we can auto-use those hours
+    let laborHours = Number(els.laborHours.value || 0);
+    const serviceText = els.service.options[els.service.selectedIndex]?.textContent || "";
+    const match = serviceText.match(/\(([\d.]+)\s*h\)/i);
+    if (match && laborPricing === "hourly") {
+      laborHours = Number(match[1]);
+      if (!Number.isNaN(laborHours)) els.laborHours.value = String(laborHours);
+    }
+
+    const flatLabor = Number(els.flatLabor.value || 0);
+
+    // ask server for labor rate (optional)
+    let laborRate = 0;
+    try {
+      const r = await apiGet(`/labor_rate?zip=${encodeURIComponent(zip)}`);
+      laborRate = Number(r.rate || 0);
+    } catch (_) {
+      // ok if rate endpoint fails; estimate will still run
+    }
+
+    const payload = {
+      zip,
+      parts_price: partsPrice,
+      labor_pricing: laborPricing,
+      labor_hours: laborPricing === "hourly" ? laborHours : 0,
+      labor_rate: laborRate,
+      flat_labor: laborPricing === "flat" ? flatLabor : 0,
+
+      vehicle_type: els.vehicleType.value || null,
+      year: els.year.value || null,
+      make: els.make.value || null,
+      model: els.model.value || null,
+
+      category_key: els.category.value || null,
+      service_id: els.service.value || null,
+    };
+
+    const result = await apiPost("/estimate", payload);
+    setResult(result);
+  }
+
+  async function init() {
+    syncLaborInputs();
+
+    // Initialize dropdown styling once (Choices will be rebuilt after loads)
+    rebuildChoices();
+
+    // Load initial vehicle list + categories
+    await loadYears();
     await loadCategories();
-
-    console.log("All dropdowns ready ✅");
-
-    // EVENTS
-    yearEl.addEventListener("change", async () => {
-      try {
-        await loadMakes(makeEl, yearEl.value);
-        await loadModels(modelEl, yearEl.value, makeEl.value);
-      } catch (e) {
-        console.error(e);
-      }
-    });
-
-    makeEl.addEventListener("change", async () => {
-      try {
-        await loadModels(modelEl, yearEl.value, makeEl.value);
-      } catch (e) {
-        console.error(e);
-      }
-    });
-
-    categorySearchEl.addEventListener("input", async () => {
-      try {
-        const key = keyByCategoryName(categorySearchEl.value);
-        categoryEl.value = key;
-        serviceEl.value = "";
-        serviceSearchEl.value = "";
-        await hydrateServicesUI(key);
-      } catch (e) {
-        resultEl.textContent = `Category change error: ${e.message}`;
-      }
-    });
-
-    serviceSearchEl.addEventListener("input", async () => {
-      try {
-        const categoryKey = categoryEl.value;
-        if (!categoryKey) return;
-
-        const services = await loadServicesForCategory(categoryKey);
-        const code = codeByServiceName(services, serviceSearchEl.value);
-        serviceEl.value = code;
-      } catch (e) {
-        resultEl.textContent = `Service change error: ${e.message}`;
-      }
-    });
-
-    btn.addEventListener("click", async () => {
-      try {
-        resultEl.textContent = "Calculating…";
-
-        // ensure hidden values are set (in case user typed and didn't blur)
-        const catKey = categoryEl.value || keyByCategoryName(categorySearchEl.value);
-        categoryEl.value = catKey;
-
-        const services = catKey ? await loadServicesForCategory(catKey) : [];
-        const svcCode = serviceEl.value || codeByServiceName(services, serviceSearchEl.value);
-        serviceEl.value = svcCode;
-
-        if (!catKey) throw new Error("Pick a Category");
-        if (!svcCode) throw new Error("Pick a Service");
-
-        const payload = {
-          zip_code: (zipEl.value || "").trim(),
-          parts_price: Number(partsPriceEl.value || 0),
-          labor_pricing: laborPricingEl.value,
-          vehicle_type: vehicleTypeEl.value,
-
-          year: Number(yearEl.value || 0) || null,
-          make: makeEl.value || null,
-          model: modelEl.value || null,
-
-          category: catKey,
-          service: svcCode,
-        };
-
-        const data = await postJSON("/estimate", payload);
-
-        resultEl.innerHTML = `
-          <div class="resultTitle">${data.service_name || "Estimate"}</div>
-          <div class="resultMoney">$${data.estimate_low} – $${data.estimate_high}</div>
-
-          <div class="resultMeta">
-            Labor rate: $${data.labor_rate}/hr •
-            Multiplier: ${data.vehicle_multiplier} (${data.vehicle_type}) •
-            Hours: ${data.labor_hours_min}–${data.labor_hours_max}
-          </div>
-
-          <div class="resultMeta">
-            Flat range: $${data.flat_rate_min}–$${data.flat_rate_max} •
-            Parts used: $${data.parts_price_used} •
-            Mode: ${data.labor_pricing}
-          </div>
-        `;
-      } catch (e) {
-        resultEl.textContent = `Error: /estimate failed: ${e.message}`;
-      }
-    });
-
-  } catch (e) {
-    console.error("Init failed:", e);
-    resultEl.textContent = `Init failed: ${e.message}`;
   }
-});
+
+  // --- Events ---
+  els.laborPricing.addEventListener("change", syncLaborInputs);
+
+  els.vehicleType.addEventListener("change", async () => {
+    await loadYears();
+    await loadCategories();
+  });
+
+  els.year.addEventListener("change", async () => {
+    await loadMakes();
+    await loadCategories();
+  });
+
+  els.make.addEventListener("change", async () => {
+    await loadModels();
+    await loadCategories();
+  });
+
+  els.model.addEventListener("change", async () => {
+    await loadCategories();
+  });
+
+  els.category.addEventListener("change", async () => {
+    await loadServices();
+  });
+
+  els.btnEstimate.addEventListener("click", async () => {
+    try {
+      await doEstimate();
+    } catch (e) {
+      setResult(String(e));
+    }
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    init().catch((e) => setResult(String(e)));
+  });
+})();
