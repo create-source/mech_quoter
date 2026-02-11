@@ -92,24 +92,9 @@ def _load_catalog() -> Dict[str, Any]:
 # Vehicle data (popular makes)
 # -----------------------------
 POPULAR_MAKES = [
-    "TOYOTA",
-    "HONDA",
-    "FORD",
-    "CHEVROLET",
-    "NISSAN",
-    "GMC",
-    "JEEP",
-    "RAM",
-    "DODGE",
-    "SUBARU",
-    "HYUNDAI",
-    "KIA",
-    "MAZDA",
-    "VOLKSWAGEN",
-    "BMW",
-    "MERCEDES-BENZ",
-    "AUDI",
-    "LEXUS",
+    "FORD", "CHEVROLET", "TOYOTA", "HONDA", "NISSAN", "JEEP", "DODGE", "GMC",
+    "HYUNDAI", "KIA", "SUBARU", "RAM", "VOLKSWAGEN", "BMW", "MERCEDES-BENZ",
+    "AUDI", "LEXUS", "MAZDA", "VOLVO", "TESLA",
 ]
 
 FALLBACK_MODELS: Dict[str, List[str]] = {
@@ -204,13 +189,13 @@ def vehicle_years() -> JSONResponse:
 
 
 @app.get("/vehicle/makes")
-def vehicle_makes(
-    year: Optional[str] = Query(default=None),
-    vehicle_type: Optional[str] = Query(default=None),
-) -> JSONResponse:
-    # Hard-limited to popular makes per your request.
-    # 'year' is accepted to match your existing frontend calls.
-    return JSONResponse(POPULAR_MAKES)
+async def vehicle_makes(year: int):
+    # ... however you fetch makes from vPIC ...
+    # Suppose the result is: makes = sorted({...})
+    makes = sorted({m.upper() for m in makes})
+
+    popular = [m for m in POPULAR_MAKES if m in makes]
+    return popular if popular else makes[:20]
 
 
 @app.get("/vehicle/models")
