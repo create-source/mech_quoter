@@ -1,3 +1,5 @@
+import httpx
+from fastapi import HTTPException
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,32 +52,54 @@ def years():
     return list(range(y, 1980, -1))
 
 @app.get("/vehicle/makes")
-def makes(year: int):
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
-    # Hard-limit to popular makes (your requirement)
-    makes = [m for m in makes if m in POPULAR_MAKES]
-    return {"makes": makes}
+def vehicle_makes(year: int):
+    try:
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/modelyear/{year}?format=json"
+        r = httpx.get(url, timeout=15)
+        r.raise_for_status()
+
+        data = r.json()
+        results = data.get("Results", [])
+
+        makes = sorted({
+            (m.get("MakeName") or "").upper().strip()
+            for m in results
+            if m.get("MakeName")
+        })
+
+        # Hard-limit to popular makes
+        makes = [m for m in makes if m in POPULAR_MAKES]
+
+        return makes
+
+    except Exception as e:
+        print("Makes API error:", e)
+        return []
+
 
 @app.get("/vehicle/models")
 def vehicle_models(year: int, make: str):
-    make = make.upper().strip()
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
-    r = httpx.get(url, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    results = data.get("Results", [])
-    models = sorted({(m.get("Model_Name") or "").strip() for m in results if m.get("Model_Name")})
-    return {"models": models}
+    try:
+        make = make.upper().strip()
 
-# -------- Catalog endpoints --------
-@app.get("/catalog")
-def catalog():
-    return load_catalog()
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
+        r = httpx.get(url, timeout=15)
+        r.raise_for_status()
+
+        data = r.json()
+        results = data.get("Results", [])
+
+        models = sorted({
+            (m.get("Model_Name") or "").strip()
+            for m in results
+            if m.get("Model_Name")
+        })
+
+        return models
+
+    except Exception as e:
+        print("Models API error:", e)
+        return []
 
 # -------- Estimate save (optional) --------
 @app.post("/estimate")
