@@ -94,3 +94,8 @@ async def create_estimate(req: Request):
 @app.get("/admin/estimates")
 def admin_estimates(_: bool = Depends(require_admin)):
     return load_estimates()
+
+@app.post("/admin/estimates")
+def admin_estimates_post(_: bool = Depends(require_admin)):
+    return load_estimates()
+
