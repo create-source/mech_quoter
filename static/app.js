@@ -1,213 +1,211 @@
-(async function () {
-  const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 
-  const zipEl = $("zip");
-  const yearEl = $("year");
-  const makeEl = $("make");
-  const modelEl = $("model");
-  const categoryEl = $("category");
-  const serviceEl = $("service");
-  const partsPriceEl = $("partsPrice");
-  const btn = $("estimateBtn");
-  const resultEl = $("result");
+const els = {
+  zip: $("zip"),
+  zipList: $("zipList"),
+  partsPrice: $("partsPrice"),
+  pricingMode: $("pricingMode"),
+  year: $("year"),
+  make: $("make"),
+  model: $("model"),
+  category: $("category"),
+  service: $("service"),
+  estimateBtn: $("estimateBtn"),
+  result: $("result"),
+};
 
-  function setLoading(msg) {
-    resultEl.className = "result";
-    resultEl.textContent = msg || "";
+let catalog = null; // { categories: [...] }
+
+function opt(value, text) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = text ?? value;
+  return o;
+}
+
+function setLoading(selectEl, label = "Loading...") {
+  selectEl.innerHTML = "";
+  selectEl.appendChild(opt("", label));
+  selectEl.disabled = true;
+}
+
+function setEmpty(selectEl, label = "Select...") {
+  selectEl.innerHTML = "";
+  selectEl.appendChild(opt("", label));
+  selectEl.disabled = false;
+}
+
+async function api(url) {
+  const r = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`${r.status} ${r.statusText}: ${t}`);
+  }
+  return r.json();
+}
+
+function populateSelect(selectEl, values, placeholder) {
+  selectEl.innerHTML = "";
+  selectEl.appendChild(opt("", placeholder));
+  for (const v of values) selectEl.appendChild(opt(v, v));
+  selectEl.disabled = false;
+}
+
+function populateCategorySelect() {
+  setEmpty(els.category, "Select category");
+  for (const c of catalog.categories) {
+    els.category.appendChild(opt(c.key, c.name));
+  }
+}
+
+function populateServiceSelectForCategory(categoryKey) {
+  els.service.innerHTML = "";
+  els.service.appendChild(opt("", "Select a service"));
+
+  if (!categoryKey) {
+    els.service.disabled = false;
+    return;
   }
 
-  function setError(msg) {
-    resultEl.className = "result error";
-    resultEl.textContent = msg;
+  const cat = catalog.categories.find((c) => c.key === categoryKey);
+  const services = (cat && Array.isArray(cat.services)) ? cat.services : [];
+
+  for (const s of services) {
+    // IMPORTANT: s is an object; we must display s.name and value s.code.
+    els.service.appendChild(opt(s.code, s.name));
   }
 
-  function setOk(html) {
-    resultEl.className = "result ok";
-    resultEl.innerHTML = html;
+  els.service.disabled = false;
+}
+
+// Popular ZIP suggestions (you can change these anytime)
+function loadZipSuggestions() {
+  const zips = [
+    "92646","92647","92648","92649",
+    "92701","92703","92704","92705","92706","92707","92708",
+    "92801","92802","92804","92805","92806","92807","92808",
+    "92602","92603","92604","92606","92612","92614","92618",
+    "92620","92625","92626","92627","92629","92630","92637",
+    "92651","92653","92655","92656","92657","92660","92661",
+    "92662","92663","92672","92673","92675","92677","92679",
+    "92683","92688","92691","92692","92694"
+  ];
+  els.zipList.innerHTML = "";
+  for (const z of zips) {
+    const o = document.createElement("option");
+    o.value = z;
+    els.zipList.appendChild(o);
+  }
+}
+
+async function init() {
+  loadZipSuggestions();
+
+  // Default states
+  setLoading(els.year);
+  setLoading(els.make);
+  setLoading(els.model);
+  setLoading(els.category);
+  setLoading(els.service);
+
+  // Load catalog once (client-side filtering)
+  catalog = await api("/catalog");
+  if (!catalog || !Array.isArray(catalog.categories)) {
+    throw new Error("Catalog response invalid (expected { categories: [...] })");
   }
 
-  function clearSelect(selectEl, placeholder) {
-    selectEl.innerHTML = "";
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = placeholder;
-    selectEl.appendChild(opt);
-  }
+  // Load years
+  const years = await api("/vehicle/years");
+  populateSelect(els.year, years, "Select year");
 
-  function fillSelect(selectEl, items, getValue, getLabel) {
-    for (const item of items) {
-      const opt = document.createElement("option");
-      opt.value = getValue(item);
-      opt.textContent = getLabel(item);
-      selectEl.appendChild(opt);
+  // Categories come from catalog
+  populateCategorySelect();
+  populateServiceSelectForCategory("");
+
+  // Wire events
+  els.year.addEventListener("change", async () => {
+    const year = els.year.value;
+    setLoading(els.make);
+    setLoading(els.model, "Select a model");
+
+    if (!year) {
+      setEmpty(els.make, "Select make");
+      setEmpty(els.model, "Select a model");
+      return;
     }
-  }
 
-  async function fetchJSON(url) {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
+    const makes = await api(`/vehicle/makes?year=${encodeURIComponent(year)}`);
+    populateSelect(els.make, makes, "Select make");
+    setEmpty(els.model, "Select a model");
+  });
+
+  els.make.addEventListener("change", async () => {
+    const year = els.year.value;
+    const make = els.make.value;
+
+    setLoading(els.model);
+
+    if (!year || !make) {
+      setEmpty(els.model, "Select a model");
+      return;
     }
-    return await res.json();
-  }
 
-  // ---- Load YEARS ----
-  async function loadYears() {
-    clearSelect(yearEl, "Select year");
-    makeEl.disabled = true;
-    modelEl.disabled = true;
-    clearSelect(makeEl, "Select make");
-    clearSelect(modelEl, "Select a model");
+    const models = await api(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
+    populateSelect(els.model, models, "Select a model");
+  });
 
-    const years = await fetchJSON("/vehicle/years");
-    fillSelect(yearEl, years, (y) => String(y), (y) => String(y));
-  }
+  els.category.addEventListener("change", () => {
+    populateServiceSelectForCategory(els.category.value);
+  });
 
-  // ---- Load MAKES (popular only, API already enforces) ----
-  async function loadMakes(year) {
-    makeEl.disabled = true;
-    modelEl.disabled = true;
-    clearSelect(makeEl, "Select make");
-    clearSelect(modelEl, "Select a model");
+  els.estimateBtn.addEventListener("click", async () => {
+    els.result.textContent = "";
 
-    if (!year) return;
+    const zip = (els.zip.value || "").trim();
+    const year = els.year.value;
+    const make = els.make.value;
+    const model = els.model.value;
+    const categoryKey = els.category.value;
+    const serviceCode = els.service.value;
+    const pricingMode = els.pricingMode.value;
+    const partsPrice = parseFloat((els.partsPrice.value || "0").toString()) || 0;
 
-    const makes = await fetchJSON(`/vehicle/makes?year=${encodeURIComponent(year)}`);
-    fillSelect(makeEl, makes, (m) => String(m), (m) => String(m));
-    makeEl.disabled = false;
-  }
+    if (!zip) return (els.result.textContent = "Enter a ZIP code.");
+    if (!year) return (els.result.textContent = "Select a year.");
+    if (!make) return (els.result.textContent = "Select a make.");
+    if (!model) return (els.result.textContent = "Select a model.");
+    if (!categoryKey) return (els.result.textContent = "Select a category.");
+    if (!serviceCode) return (els.result.textContent = "Select a service.");
 
-  // ---- Load MODELS ----
-  async function loadModels(year, make) {
-    modelEl.disabled = true;
-    clearSelect(modelEl, "Select a model");
-    if (!year || !make) return;
+    const url =
+      `/estimate?zip_code=${encodeURIComponent(zip)}` +
+      `&year=${encodeURIComponent(year)}` +
+      `&make=${encodeURIComponent(make)}` +
+      `&model=${encodeURIComponent(model)}` +
+      `&category_key=${encodeURIComponent(categoryKey)}` +
+      `&service_code=${encodeURIComponent(serviceCode)}` +
+      `&pricing_mode=${encodeURIComponent(pricingMode)}` +
+      `&parts_price=${encodeURIComponent(partsPrice.toFixed(2))}`;
 
-    const models = await fetchJSON(
-      `/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`
-    );
-    fillSelect(modelEl, models, (m) => String(m), (m) => String(m));
-    modelEl.disabled = false;
-  }
-
-  // ---- Catalog for client-side category->service filtering ----
-  let catalogTree = null; // { categories: [ {key,name,services:[{code,name,...}]} ] }
-
-  async function loadCatalog() {
-    clearSelect(categoryEl, "Select category");
-    serviceEl.disabled = true;
-    clearSelect(serviceEl, "Select a service");
-
-    catalogTree = await fetchJSON("/catalog");
-
-    // categories are objects; ALWAYS use strings to avoid [object Object]
-    fillSelect(
-      categoryEl,
-      catalogTree.categories || [],
-      (c) => String(c.key),
-      (c) => String(c.name || c.key)
-    );
-  }
-
-  function updateServicesForCategory(categoryKey) {
-    serviceEl.disabled = true;
-    clearSelect(serviceEl, "Select a service");
-
-    if (!catalogTree || !categoryKey) return;
-
-    const cat = (catalogTree.categories || []).find((c) => String(c.key) === String(categoryKey));
-    if (!cat) return;
-
-    const services = cat.services || [];
-    fillSelect(
-      serviceEl,
-      services,
-      (s) => String(s.code),
-      (s) => String(s.name || s.code)
-    );
-
-    serviceEl.disabled = false;
-  }
-
-  // ---- Estimate ----
-  async function runEstimate() {
-    const zip = (zipEl.value || "").trim();
-    const year = yearEl.value;
-    const make = makeEl.value;
-    const model = modelEl.value;
-    const category = categoryEl.value;
-    const service = serviceEl.value;
-    const partsPrice = partsPriceEl.value ? Number(partsPriceEl.value) : 0;
-
-    if (!zip || zip.length < 5) return setError("Enter a valid ZIP code.");
-    if (!year) return setError("Select a year.");
-    if (!make) return setError("Select a make.");
-    if (!model) return setError("Select a model.");
-    if (!category) return setError("Select a category.");
-    if (!service) return setError("Select a service.");
-
-    setLoading("Calculating...");
-
-    const qs = new URLSearchParams({
-      zip_code: zip,
-      year,
-      make,
-      model,
-      category,
-      service,
-      parts_price: String(partsPrice || 0),
-    });
-
-    const data = await fetchJSON(`/estimate?${qs.toString()}`);
-
-    setOk(`
-      <div><strong>${data.service_name}</strong></div>
-      <div>Labor: $${data.labor_min} – $${data.labor_max} (rate $${data.labor_rate}/hr)</div>
-      <div>Parts: $${data.parts_price}</div>
-      <hr/>
-      <div><strong>Total Estimate: $${data.total_min} – $${data.total_max}</strong></div>
-    `);
-  }
-
-  // ---- Wire events ----
-  yearEl.addEventListener("change", async () => {
     try {
-      setLoading("");
-      await loadMakes(yearEl.value);
+      const out = await api(url);
+      els.result.textContent =
+        `Service: ${out.service.name}\n` +
+        `Category: ${out.category.name}\n\n` +
+        `Labor: $${out.labor_min} – $${out.labor_max}\n` +
+        `Parts: $${out.parts_price}\n` +
+        `TOTAL: $${out.total_min} – $${out.total_max}\n`;
     } catch (e) {
-      setError(`Failed to load makes: ${e.message}`);
+      els.result.textContent = `Error: ${e.message}`;
     }
   });
 
-  makeEl.addEventListener("change", async () => {
-    try {
-      setLoading("");
-      await loadModels(yearEl.value, makeEl.value);
-    } catch (e) {
-      setError(`Failed to load models: ${e.message}`);
-    }
-  });
+  // Initialize make/model placeholders
+  setEmpty(els.make, "Select make");
+  setEmpty(els.model, "Select a model");
+}
 
-  categoryEl.addEventListener("change", () => {
-    setLoading("");
-    updateServicesForCategory(categoryEl.value);
-  });
-
-  btn.addEventListener("click", async () => {
-    try {
-      await runEstimate();
-    } catch (e) {
-      setError(`Estimate failed: ${e.message}`);
-    }
-  });
-
-  // ---- Boot ----
-  try {
-    setLoading("Loading...");
-    await Promise.all([loadYears(), loadCatalog()]);
-    setLoading("");
-  } catch (e) {
-    setError(`Startup failed: ${e.message}`);
-  }
-})();
+init().catch((e) => {
+  console.error(e);
+  els.result.textContent = `Startup error: ${e.message}`;
+});
