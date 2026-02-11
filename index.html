@@ -1,72 +1,64 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Repair Estimator</title>
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <!-- App styles -->
+  <link rel="stylesheet" href="/static/style.css" />
 
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/app.js" defer></script>
 </head>
-
 <body>
-  <header class="top">
+
+  <main class="container">
     <h1>Repair Estimator</h1>
-    <p class="sub">Estimate-only • Personal use</p>
-  </header>
 
-  <main class="card">
-    <label for="zip">ZIP Code</label>
-    <input id="zip" list="zipList" inputmode="numeric" placeholder="Type ZIP…" />
-    <datalist id="zipList"></datalist>
-
-    <label for="partsPrice">Parts Price ($)</label>
-    <input id="partsPrice" type="number" min="0" step="1" placeholder="0" />
-
-    <label for="laborPricing">Labor Pricing</label>
-    <select id="laborPricing">
-      <option value="hourly" selected>Hourly (rate × hours)</option>
-      <option value="flat">Flat-rate (service flat)</option>
-    </select>
-
+    <!-- Vehicle Type -->
     <label for="vehicleType">Vehicle Type</label>
     <select id="vehicleType">
-      <option value="auto" selected>Auto-detect</option>
-      <option value="sedan">Sedan</option>
-      <option value="suv">SUV / CUV</option>
+      <option value="">Auto-detect</option>
+      <option value="car">Car</option>
       <option value="truck">Truck</option>
+      <option value="suv">SUV</option>
     </select>
 
+    <!-- Year -->
     <label for="year">Year</label>
-    <select id="year"></select>
+    <select id="year">
+      <option value="">Select year</option>
+    </select>
 
+    <!-- Make -->
     <label for="make">Make</label>
-    <select id="make"></select>
+    <select id="make" disabled>
+      <option value="">Select make</option>
+    </select>
 
+    <!-- Model -->
     <label for="model">Model</label>
-    <select id="model"></select>
+    <select id="model" disabled>
+      <option value="">Select model</option>
+    </select>
 
-    <!-- SEARCHABLE CATEGORY -->
-    <label for="categorySearch">Category</label>
-    <input id="categorySearch" list="categoryList" placeholder="Type a category…" />
-    <datalist id="categoryList"></datalist>
-    <!-- hidden actual value used by API -->
-    <input id="category" type="hidden" />
+    <!-- Category (SINGLE FIELD) -->
+    <label for="category">Category</label>
+    <select id="category" disabled>
+      <option value="">Select category</option>
+    </select>
 
-    <!-- SEARCHABLE SERVICE -->
-    <label for="serviceSearch">Service</label>
-    <input id="serviceSearch" list="serviceList" placeholder="Type a service…" />
-    <datalist id="serviceList"></datalist>
-    <input id="service" type="hidden" />
+    <!-- Service (SINGLE FIELD) -->
+    <label for="service">Service</label>
+    <select id="service" disabled>
+      <option value="">Select service</option>
+    </select>
 
+    <!-- Estimate Button -->
     <button id="estimateBtn">Get Estimate</button>
-
-    <div id="result" class="result"></div>
   </main>
 
-  <script src="/static/app.js?v=1"></script>
+  <!-- App logic -->
+  <script src="/static/app.js"></script>
+
 </body>
 </html>
