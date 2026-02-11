@@ -139,3 +139,33 @@ canvas {
 .adminRow { display:flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .hint { margin-top: 10px; color: var(--muted); font-size: 13px; }
 code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 8px; }
+
+/* --- Fix select dropdown readability (mobile + desktop) --- */
+:root { color-scheme: dark; }
+
+label{
+  color: rgba(234,240,255,.88); /* brighter labels */
+  font-weight: 600;
+}
+
+select{
+  color-scheme: dark;
+  background: rgba(5,10,22,.72);
+  color: rgba(234,240,255,.95);
+}
+
+select option,
+select optgroup{
+  background: #0b1220;         /* dark dropdown */
+  color: rgba(234,240,255,.95); /* readable option text */
+}
+
+/* make dropdown caret easier to see */
+select{
+  border-color: rgba(255,255,255,.18);
+}
+select:focus{
+  border-color: rgba(66,153,225,.8);
+  box-shadow: 0 0 0 4px rgba(66,153,225,.25);
+}
+
