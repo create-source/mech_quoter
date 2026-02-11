@@ -3,6 +3,37 @@ console.log("app.js loaded ✅");
 window.addEventListener("error", (e) => {
   console.error("JS Error:", e.message, e.filename, e.lineno);
 });
+// --- Searchable dropdowns (Choices.js) ---
+const _choices = {}; // store instances by element id
+
+function enhanceSelect(selectEl, placeholder = "Select...") {
+  if (!selectEl) return;
+
+  // Only for <select>
+  if (selectEl.tagName !== "SELECT") return;
+
+  // If library didn't load, silently skip (dropdown still works normally)
+  if (typeof Choices === "undefined") return;
+
+  const id = selectEl.id || selectEl.name;
+  if (!id) return;
+
+  // Destroy previous instance (important when you re-populate options)
+  if (_choices[id]) {
+    _choices[id].destroy();
+    delete _choices[id];
+  }
+
+  _choices[id] = new Choices(selectEl, {
+    searchEnabled: true,
+    shouldSort: false,              // keep your API order
+    placeholder: true,
+    placeholderValue: placeholder,
+    searchPlaceholderValue: "Type to search...",
+    itemSelectText: "",
+    removeItemButton: false,
+  });
+}
 
 function el(id) {
   return document.getElementById(id);
