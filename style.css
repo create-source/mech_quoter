@@ -178,3 +178,28 @@ textarea:focus {
   border-color: rgba(66,153,225,.9);
   box-shadow: 0 0 0 4px rgba(66,153,225,.25);
 }
+
+/* ---- Make selects readable in dark UI ---- */
+select {
+  color: #eaf0ff !important;
+  background: #0b1220 !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+}
+
+select option,
+select optgroup {
+  background: #0b1220 !important;
+  color: #eaf0ff !important;
+}
+
+/* Placeholder-looking default option */
+select option[value=""],
+select option[disabled] {
+  color: rgba(234,240,255,.65) !important;
+}
+
+/* Focus ring */
+select:focus {
+  border-color: rgba(66,153,225,.8) !important;
+  box-shadow: 0 0 0 4px rgba(66,153,225,.25) !important;
+}
