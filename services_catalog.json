@@ -1,7 +1,6 @@
 {
   "labor_rate": 90,
   "categories": [
-
     {
       "key": "maintenance",
       "name": "Maintenance",
@@ -18,7 +17,6 @@
         { "code": "fluid_top_off", "name": "Fluid Top-Off Service", "labor_hours_min": 0.2, "labor_hours_max": 0.5 }
       ]
     },
-
     {
       "key": "engine",
       "name": "Engine",
@@ -38,7 +36,6 @@
         { "code": "intake_manifold_replace", "name": "Intake Manifold Replacement", "labor_hours_min": 3.5, "labor_hours_max": 9.0 }
       ]
     },
-
     {
       "key": "cooling",
       "name": "Cooling System",
@@ -49,10 +46,9 @@
         { "code": "coolant_flush", "name": "Coolant Flush", "labor_hours_min": 1.0, "labor_hours_max": 2.0 },
         { "code": "coolant_leak_diag", "name": "Coolant Leak Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
         { "code": "fan_assembly", "name": "Cooling Fan Assembly", "labor_hours_min": 1.2, "labor_hours_max": 3.5 },
-        { "code": "hose_replace", "name": "Coolant Hose Replacement (each)", "labor_hours_min": 0.7, "labor_hours_max": 2.5},
+        { "code": "hose_replace", "name": "Coolant Hose Replacement (each)", "labor_hours_min": 0.7, "labor_hours_max": 2.5 }
       ]
     },
-
     {
       "key": "brakes",
       "name": "Brakes",
@@ -65,7 +61,6 @@
         { "code": "brake_flush", "name": "Brake Fluid Flush", "labor_hours_min": 1.0, "labor_hours_max": 1.8 }
       ]
     },
-
     {
       "key": "suspension",
       "name": "Suspension & Steering",
@@ -78,7 +73,6 @@
         { "code": "alignment", "name": "Wheel Alignment", "labor_hours_min": 1.0, "labor_hours_max": 1.8 }
       ]
     },
-
     {
       "key": "transmission",
       "name": "Transmission",
@@ -91,7 +85,6 @@
         { "code": "trans_pan_gasket", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0 }
       ]
     },
-
     {
       "key": "ac_heat",
       "name": "A/C & Heating",
@@ -104,7 +97,6 @@
         { "code": "blend_door_actuator", "name": "Blend Door Actuator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 5.0 }
       ]
     },
-
     {
       "key": "electrical",
       "name": "Electrical",
@@ -116,7 +108,6 @@
         { "code": "window_regulator", "name": "Window Regulator Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.0 }
       ]
     },
-
     {
       "key": "fuel",
       "name": "Fuel System",
@@ -127,7 +118,6 @@
         { "code": "throttle_body_clean", "name": "Throttle Body Cleaning", "labor_hours_min": 0.6, "labor_hours_max": 1.2 }
       ]
     },
-
     {
       "key": "exhaust",
       "name": "Exhaust & Emissions",
@@ -140,6 +130,5 @@
         { "code": "exhaust_leak_repair", "name": "Exhaust Leak Repair (minor)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
     }
-
   ]
 }
