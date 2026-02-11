@@ -1,152 +1,200 @@
-console.log("app.js loaded");
+/* global Choices */
 
-const yearSelect = document.getElementById("year");
-const makeSelect = document.getElementById("make");
-const modelSelect = document.getElementById("model");
-const categorySelect = document.getElementById("category");
-const serviceSelect = document.getElementById("service");
+const $ = (id) => document.getElementById(id);
 
-/* -----------------------------
-   Helpers
--------------------------------- */
-function resetSelect(select, placeholder, disabled = true) {
-  select.innerHTML = "";
+const els = {
+  vehicleType: $("vehicleType"),
+  year: $("year"),
+  make: $("make"),
+  model: $("model"),
+  category: $("category"),
+  service: $("service"),
+  result: $("result"),
+};
+
+let choices = {};
+
+function setDisabled(el, disabled) {
+  el.disabled = !!disabled;
+}
+
+function clearSelect(el, placeholder) {
+  el.innerHTML = "";
   const opt = document.createElement("option");
   opt.value = "";
   opt.textContent = placeholder;
-  select.appendChild(opt);
-  select.disabled = disabled;
+  opt.selected = true;
+  el.appendChild(opt);
 }
 
-function populateSelect(select, items) {
-  items.forEach(item => {
+function setOptions(el, items, placeholder) {
+  clearSelect(el, placeholder);
+  for (const v of items) {
     const opt = document.createElement("option");
-    opt.value = item;
-    opt.textContent = item;
-    select.appendChild(opt);
+    opt.value = v;
+    opt.textContent = v;
+    el.appendChild(opt);
+  }
+}
+
+function rebuildChoices(id) {
+  if (choices[id]) choices[id].destroy();
+  choices[id] = new Choices("#" + id, {
+    searchEnabled: true,
+    shouldSort: true,
+    itemSelectText: "",
+    allowHTML: false,
   });
 }
 
-/* -----------------------------
-   Load Years
--------------------------------- */
-fetch("/vehicle/years")
-  .then(res => res.json())
-  .then(years => {
-    populateSelect(yearSelect, years);
-  })
-  .catch(err => {
-    console.error("Failed to load years:", err);
+async function api(path) {
+  const res = await fetch(path, { headers: { "Accept": "application/json" } });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j && j.detail) msg = j.detail;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function qs(params) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && String(v).trim() !== "") sp.set(k, v);
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
+
+async function loadYears() {
+  const vehicle_type = els.vehicleType.value;
+  const years = await api("/vehicle/years" + qs({ vehicle_type }));
+  setOptions(els.year, years, "Select year");
+  rebuildChoices("year");
+}
+
+async function loadMakes() {
+  const vehicle_type = els.vehicleType.value;
+  const year = els.year.value;
+  const makes = await api("/vehicle/makes" + qs({ vehicle_type, year }));
+  setOptions(els.make, makes, "Select make");
+  setDisabled(els.make, false);
+  rebuildChoices("make");
+}
+
+async function loadModels() {
+  const vehicle_type = els.vehicleType.value;
+  const year = els.year.value;
+  const make = els.make.value;
+  const models = await api("/vehicle/models" + qs({ vehicle_type, year, make }));
+  setOptions(els.model, models, "Select model");
+  setDisabled(els.model, false);
+  rebuildChoices("model");
+}
+
+async function loadCategories() {
+  const vehicle_type = els.vehicleType.value;
+  const year = els.year.value;
+  const make = els.make.value;
+  const model = els.model.value;
+
+  const categories = await api("/categories" + qs({ vehicle_type, year, make, model }));
+  setOptions(els.category, categories, "Select category");
+  setDisabled(els.category, false);
+  rebuildChoices("category");
+}
+
+async function loadServices() {
+  const vehicle_type = els.vehicleType.value;
+  const year = els.year.value;
+  const make = els.make.value;
+  const model = els.model.value;
+  const category = els.category.value;
+
+  const services = await api("/services" + qs({ vehicle_type, year, make, model, category }));
+  setOptions(els.service, services, "Select service");
+  setDisabled(els.service, false);
+  rebuildChoices("service");
+}
+
+function resetDownstream(from) {
+  if (from === "vehicleType") {
+    clearSelect(els.year, "Select year");
+    setDisabled(els.year, false);
+    clearSelect(els.make, "Select make"); setDisabled(els.make, true);
+    clearSelect(els.model, "Select model"); setDisabled(els.model, true);
+    clearSelect(els.category, "Select category"); setDisabled(els.category, true);
+    clearSelect(els.service, "Select service"); setDisabled(els.service, true);
+  }
+  if (from === "year") {
+    clearSelect(els.make, "Select make"); setDisabled(els.make, true);
+    clearSelect(els.model, "Select model"); setDisabled(els.model, true);
+    clearSelect(els.category, "Select category"); setDisabled(els.category, true);
+    clearSelect(els.service, "Select service"); setDisabled(els.service, true);
+  }
+  if (from === "make") {
+    clearSelect(els.model, "Select model"); setDisabled(els.model, true);
+    clearSelect(els.category, "Select category"); setDisabled(els.category, true);
+    clearSelect(els.service, "Select service"); setDisabled(els.service, true);
+  }
+  if (from === "model") {
+    clearSelect(els.category, "Select category"); setDisabled(els.category, true);
+    clearSelect(els.service, "Select service"); setDisabled(els.service, true);
+  }
+  if (from === "category") {
+    clearSelect(els.service, "Select service"); setDisabled(els.service, true);
+  }
+}
+
+async function init() {
+  // Initialize Choices on selects that already exist
+  ["laborPricing", "vehicleType", "year", "make", "model", "category", "service"].forEach((id) => {
+    if ($(id)) rebuildChoices(id);
   });
 
-/* -----------------------------
-   Year → Makes
--------------------------------- */
-yearSelect.addEventListener("change", () => {
-  const year = yearSelect.value;
+  // Start state
+  setDisabled(els.make, true);
+  setDisabled(els.model, true);
+  setDisabled(els.category, true);
+  setDisabled(els.service, true);
 
-  resetSelect(makeSelect, "Select make");
-  resetSelect(modelSelect, "Select model");
-  resetSelect(categorySelect, "Select category");
-  resetSelect(serviceSelect, "Select service");
-
-  if (!year) return;
-
-  fetch(`/vehicle/makes?year=${year}`)
-    .then(res => res.json())
-    .then(makes => {
-      populateSelect(makeSelect, makes);
-      makeSelect.disabled = false;
-    })
-    .catch(err => {
-      console.error("Failed to load makes:", err);
-    });
-});
-
-/* -----------------------------
-   Make → Models
--------------------------------- */
-makeSelect.addEventListener("change", () => {
-  const year = yearSelect.value;
-  const make = makeSelect.value;
-
-  resetSelect(modelSelect, "Select model");
-  resetSelect(categorySelect, "Select category");
-  resetSelect(serviceSelect, "Select service");
-
-  if (!year || !make) return;
-
-  fetch(`/vehicle/models?year=${year}&make=${encodeURIComponent(make)}`)
-    .then(res => res.json())
-    .then(models => {
-      populateSelect(modelSelect, models);
-      modelSelect.disabled = false;
-    })
-    .catch(err => {
-      console.error("Failed to load models:", err);
-    });
-});
-
-/* -----------------------------
-   Model → Categories
--------------------------------- */
-modelSelect.addEventListener("change", () => {
-  resetSelect(categorySelect, "Select category");
-  resetSelect(serviceSelect, "Select service");
-
-  if (!modelSelect.value) return;
-
-  fetch("/categories")
-    .then(res => res.json())
-    .then(categories => {
-      populateSelect(categorySelect, categories);
-      categorySelect.disabled = false;
-    })
-    .catch(err => {
-      console.error("Failed to load categories:", err);
-    });
-});
-
-/* -----------------------------
-   Category → Services
--------------------------------- */
-categorySelect.addEventListener("change", () => {
-  const category = categorySelect.value;
-
-  resetSelect(serviceSelect, "Select service");
-
-  if (!category) return;
-
-  fetch(`/services?category=${encodeURIComponent(category)}`)
-    .then(res => res.json())
-    .then(services => {
-      populateSelect(serviceSelect, services);
-      serviceSelect.disabled = false;
-    })
-    .catch(err => {
-      console.error("Failed to load services:", err);
-    });
-});
-
-/* -----------------------------
-   Estimate Button (placeholder)
--------------------------------- */
-document.getElementById("estimateBtn").addEventListener("click", () => {
-  if (
-    !yearSelect.value ||
-    !makeSelect.value ||
-    !modelSelect.value ||
-    !categorySelect.value ||
-    !serviceSelect.value
-  ) {
-    alert("Please complete all fields.");
-    return;
+  try {
+    await loadYears();
+  } catch (e) {
+    els.result.textContent = `Error loading years: ${e.message}`;
   }
 
-  alert(
-    `Estimate requested for:\n\n` +
-    `${yearSelect.value} ${makeSelect.value} ${modelSelect.value}\n` +
-    `Category: ${categorySelect.value}\n` +
-    `Service: ${serviceSelect.value}`
-  );
-});
+  els.vehicleType.addEventListener("change", async () => {
+    resetDownstream("vehicleType");
+    try { await loadYears(); } catch (e) { els.result.textContent = e.message; }
+  });
+
+  els.year.addEventListener("change", async () => {
+    resetDownstream("year");
+    if (!els.year.value) return;
+    try { await loadMakes(); } catch (e) { els.result.textContent = e.message; }
+  });
+
+  els.make.addEventListener("change", async () => {
+    resetDownstream("make");
+    if (!els.make.value) return;
+    try { await loadModels(); } catch (e) { els.result.textContent = e.message; }
+  });
+
+  els.model.addEventListener("change", async () => {
+    resetDownstream("model");
+    if (!els.model.value) return;
+    try { await loadCategories(); } catch (e) { els.result.textContent = e.message; }
+  });
+
+  els.category.addEventListener("change", async () => {
+    resetDownstream("category");
+    if (!els.category.value) return;
+    try { await loadServices(); } catch (e) { els.result.textContent = e.message; }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
