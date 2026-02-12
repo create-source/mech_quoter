@@ -82,3 +82,22 @@ def catalog():
 def categories():
     cat = load_catalog()
     return [{"key": c["key"], "name": c["name"]} for c in cat.get("categories", [])]
+
+from fastapi.responses import FileResponse
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+import uuid
+
+@app.post("/generate-pdf")
+async def generate_pdf(data: dict):
+
+    filename = f"estimate_{uuid.uuid4().hex}.pdf"
+    filepath = BASE_DIR / filename
+
+    doc = SimpleDocTemplate(str(filepath), pagesize=
