@@ -65,24 +65,34 @@ function buildEstimatePayload() {
   const labor = hours * rate;
   const total = labor + parts;
 
+  const customerName = ($("customerName")?.value || "").trim();
+  const customerPhone = ($("customerPhone")?.value || "").trim();
+  const signatureDataUrl = window.__sigPad ? window.__sigPad.getDataUrl() : "";
+
   return {
-    vehicle: { year, make, model },
-    selection: {
-      category_key: categoryKey,
-      category_name: categoryLabel,
-      service_code: serviceCode,
-      service_name: serviceLabel,
-    },
-    pricing: {
-      labor_hours: hours,
-      labor_rate: rate,
-      parts: parts,
-      labor: labor,
-      total: total,
-    },
-    notes,
-  };
-}
+  vehicle: { year, make, model },
+  selection: {
+    category_key: categoryKey,
+    category_name: categoryLabel,
+    service_code: serviceCode,
+    service_name: serviceLabel,
+  },
+  pricing: {
+    labor_hours: hours,
+    labor_rate: rate,
+    parts: parts,
+    labor: labor,
+    total: total,
+  },
+  notes,
+
+  customer: {
+    name: customerName,
+    phone: customerPhone
+  },
+
+  signature_data_url: signatureDataUrl
+};
 
 window.addEventListener("DOMContentLoaded", () => {
   init().catch((e) => {
@@ -94,6 +104,91 @@ window.addEventListener("DOMContentLoaded", () => {
 
 let catalog = null;
 let servicesByCategory = new Map();
+
+function setupSignaturePad(canvas, clearBtn) {
+  const ctx = canvas.getContext("2d");
+  let drawing = false;
+  let lastX = 0, lastY = 0;
+
+  const resizeCanvasToDisplaySize = () => {
+    // Make canvas crisp on high-DPI screens (phones)
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    // Nice pen settings
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  };
+
+  const getPos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const isTouch = e.touches && e.touches.length;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const start = (e) => {
+    e.preventDefault();
+    drawing = true;
+    const p = getPos(e);
+    lastX = p.x; lastY = p.y;
+  };
+
+  const move = (e) => {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastX = p.x; lastY = p.y;
+  };
+
+  const end = (e) => {
+    if (!drawing) return;
+    e.preventDefault();
+    drawing = false;
+  };
+
+  const clear = () => {
+    const rect = canvas.getBoundingClientRect();
+    ctx.clearRect(0, 0, rect.width, rect.height);
+  };
+
+  // Events: mouse + touch
+  canvas.addEventListener("mousedown", start);
+  canvas.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", end);
+
+  canvas.addEventListener("touchstart", start, { passive: false });
+  canvas.addEventListener("touchmove", move, { passive: false });
+  window.addEventListener("touchend", end, { passive: false });
+
+  // Resize on load + when screen changes
+  resizeCanvasToDisplaySize();
+  window.addEventListener("resize", () => resizeCanvasToDisplaySize());
+
+  if (clearBtn) clearBtn.addEventListener("click", clear);
+
+  return {
+    clear,
+    getDataUrl: () => {
+      // If blank, return empty string (so PDF doesn’t show garbage)
+      // Quick blank check: compare to an empty canvas
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      if (canvas.toDataURL() === tmp.toDataURL()) return "";
+      return canvas.toDataURL("image/png");
+    }
+  };
+}
 
 async function init() {
   const yearSel = $("year");
@@ -109,16 +204,25 @@ async function init() {
   const pdfBtn = $("pdfBtn");
   const statusBox = $("statusBox");
   const clearBtn = $("clearBtn");
+  const sigCanvas = $("sigCanvas");
+  const sigClearBtn = $("sigClearBtn");
+  const customerNameEl = $("customerName");
+  const customerPhoneEl = $("customerPhone");
+
 
   const required = [
     yearSel, makeSel, modelSel, categorySel, serviceSel,
     laborHoursEl, partsPriceEl, laborRateEl, notesEl,
-    estimateBtn, pdfBtn, statusBox, clearBtn
+    estimateBtn, pdfBtn, statusBox, clearBtn,
+    sigCanvas, sigClearBtn
   ];
   if (required.some((x) => !x)) {
     throw new Error("Missing required elements (check IDs in index.html).");
   }
 
+  // Initialize signature pad
+  window.__sigPad = setupSignaturePad(sigCanvas, sigClearBtn);
+  
   // Years
   const years = await apiGet("/vehicle/years");
   setOptions(yearSel, years.map((y) => ({ value: String(y), label: String(y) })), "Select year");
@@ -208,7 +312,18 @@ async function init() {
       // Reset labor rate to default
       if (catalog && typeof catalog.labor_rate !== "undefined") {
         laborRateEl.value = Number(catalog.labor_rate || 90);
-      }
+
+      // Reset customer fields
+      if ($("customerName")) $("customerName").value = "";
+      if ($("customerPhone")) $("customerPhone").value = "";
+      
+      // Clear signature canvas
+      if (window.__sigPad) window.__sigPad.clear();
+      
+      // Clear status box
+      statusBox.textContent = "";
+
+      });
     
       // Clear output box
       statusBox.textContent = "";
