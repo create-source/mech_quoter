@@ -6,6 +6,11 @@ import json
 import httpx
 from datetime import datetime
 from urllib.parse import quote
+from fastapi import Body
+from fastapi.responses import Response
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from io import BytesIO
 
 app = FastAPI()
 
@@ -93,3 +98,86 @@ def service_worker():
 def categories():
     cat = load_catalog()
     return [{"key": c["key"], "name": c["name"]} for c in cat.get("categories", [])]
+
+@app.post("/estimate/pdf")
+def estimate_pdf(payload: dict = Body(...)):
+    """
+    Expects JSON payload from app.js buildEstimatePayload().
+    Returns a generated PDF.
+    """
+    vehicle = payload.get("vehicle", {})
+    selection = payload.get("selection", {})
+    pricing = payload.get("pricing", {})
+    notes = payload.get("notes", "")
+
+    year = vehicle.get("year", "")
+    make = vehicle.get("make", "")
+    model = vehicle.get("model", "")
+
+    category_name = selection.get("category_name", "")
+    service_name = selection.get("service_name", "")
+
+    labor_hours = float(pricing.get("labor_hours", 0) or 0)
+    labor_rate = float(pricing.get("labor_rate", 0) or 0)
+    parts = float(pricing.get("parts", 0) or 0)
+    labor = float(pricing.get("labor", labor_hours * labor_rate) or 0)
+    total = float(pricing.get("total", labor + parts) or 0)
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+
+    y = height - 60
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, y, "Repair Estimate")
+    y -= 25
+
+    c.setFont("Helvetica", 11)
+    c.drawString(50, y, f"Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    y -= 18
+    c.drawString(50, y, f"Vehicle: {year} {make} {model}".strip())
+    y -= 18
+    c.drawString(50, y, f"Category: {category_name}")
+    y -= 18
+    c.drawString(50, y, f"Service: {service_name}")
+    y -= 22
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Pricing")
+    y -= 16
+
+    c.setFont("Helvetica", 11)
+    c.drawString(50, y, f"Labor: {labor_hours:.1f} hrs @ ${labor_rate:.2f}/hr = ${labor:.2f}")
+    y -= 16
+    c.drawString(50, y, f"Parts: ${parts:.2f}")
+    y -= 16
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, f"Total: ${total:.2f}")
+    y -= 22
+
+    if notes:
+      c.setFont("Helvetica-Bold", 12)
+      c.drawString(50, y, "Notes")
+      y -= 16
+      c.setFont("Helvetica", 11)
+      # simple wrap
+      max_chars = 95
+      for i in range(0, len(notes), max_chars):
+          c.drawString(50, y, notes[i:i+max_chars])
+          y -= 14
+          if y < 60:
+              c.showPage()
+              y = height - 60
+
+    c.showPage()
+    c.save()
+
+    pdf_bytes = buf.getvalue()
+    buf.close()
+
+    filename = "estimate.pdf"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
