@@ -119,15 +119,12 @@ def home() -> HTMLResponse:
     return HTMLResponse(INDEX_HTML.read_text(encoding="utf-8"))
 
 
-@app.get("/manifest.json")
-def manifest() -> FileResponse:
-    if not MANIFEST_JSON.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Missing static/manifest.json. Create it in the static folder.",
-        )
-    return FileResponse(str(MANIFEST_JSON), media_type="application/json")
-
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(
+        "static/manifest.webmanifest",
+        media_type="application/manifest+json"
+    )
 
 @app.get("/health")
 def health() -> JSONResponse:
