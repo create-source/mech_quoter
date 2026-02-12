@@ -11,6 +11,9 @@ from fastapi.responses import Response
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from io import BytesIO
+import base64
+import re
+from reportlab.lib.utils import ImageReader
 
 app = FastAPI()
 
@@ -110,6 +113,12 @@ def estimate_pdf(payload: dict = Body(...)):
     pricing = payload.get("pricing", {})
     notes = payload.get("notes", "")
 
+    customer = payload.get("customer", {}) or {}
+    customer_name = customer.get("name", "")
+    customer_phone = customer.get("phone", "")
+    
+    sig_data_url = payload.get("signature_data_url", "") or ""
+
     year = vehicle.get("year", "")
     make = vehicle.get("make", "")
     model = vehicle.get("model", "")
@@ -154,6 +163,55 @@ def estimate_pdf(payload: dict = Body(...)):
     c.setFont("Helvetica-Bold", 12)
     c.drawString(50, y, f"Total: ${total:.2f}")
     y -= 22
+
+    # Customer
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Customer")
+    y -= 16
+
+    c.setFont("Helvetica", 11)
+    if customer_name:
+        c.drawString(50, y, f"Name: {customer_name}")
+        y -= 16
+    if customer_phone:
+        c.drawString(50, y, f"Phone: {customer_phone}")
+        y -= 16
+
+    # Signature
+    if sig_data_url.startswith("data:image/png;base64,"):
+        try:
+            b64 = re.sub(r"^data:image\/png;base64,", "", sig_data_url)
+            img_bytes = base64.b64decode(b64)
+            img = ImageReader(BytesIO(img_bytes))
+    
+            y -= 10
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(50, y, "Signature")
+            y -= 10
+    
+            sig_w = 260
+            sig_h = 90
+    
+            # Draw box
+            c.rect(50, y - sig_h, sig_w, sig_h)
+    
+            # Draw image inside box
+            c.drawImage(
+                img,
+                52,
+                y - sig_h + 2,
+                width=sig_w - 4,
+                height=sig_h - 4,
+                preserveAspectRatio=True,
+                mask='auto'
+            )
+    
+            y -= (sig_h + 18)
+    
+        except Exception:
+            c.setFont("Helvetica", 10)
+            c.drawString(50, y, "Signature could not be rendered.")
+            y -= 16
 
     if notes:
       c.setFont("Helvetica-Bold", 12)
