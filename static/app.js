@@ -7,93 +7,26 @@
 */
 
 // ===============================
-// SERVICE WORKER REGISTRATION (root scope) + updates
+// SERVICE WORKER REGISTRATION (root scope)
 // ===============================
-window.addEventListener("load", () => {
-  registerServiceWorkerWithUpdates();
-});
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      console.log("Service Worker registered", reg);
 
-}
-// ===============================
-// PWA UPDATE NOTIFICATION
-// ===============================
-let swRegistration = null;
-let hasPromptedUpdate = false;
-
-const updateBanner = document.getElementById("updateBanner");
-const updateReloadBtn = document.getElementById("updateReloadBtn");
-const updateDismissBtn = document.getElementById("updateDismissBtn");
-
-function showUpdateBanner() {
-  if (!updateBanner || hasPromptedUpdate) return;
-  hasPromptedUpdate = true;
-  updateBanner.hidden = false;
-}
-
-function hideUpdateBanner() {
-  if (!updateBanner) return;
-  updateBanner.hidden = true;
-}
-
-async function activateUpdateAndReload() {
-  try {
-    if (!swRegistration) return window.location.reload();
-    if (swRegistration.waiting) {
-      swRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+      // Auto-reload when a new SW becomes active
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    } catch (err) {
+      console.error("SW registration failed:", err);
     }
-  } finally {
-    // New SW takes control after controllerchange
-  }
-}
-
-function setupUpdateUI() {
-  if (updateReloadBtn) updateReloadBtn.addEventListener("click", activateUpdateAndReload);
-  if (updateDismissBtn) updateDismissBtn.addEventListener("click", hideUpdateBanner);
-
-  // When the new SW activates and takes control, reload once.
-  let reloaded = false;
-  navigator.serviceWorker?.addEventListener("controllerchange", () => {
-    if (reloaded) return;
-    reloaded = true;
-    window.location.reload();
   });
 }
-
-async function registerServiceWorkerWithUpdates() {
-  if (!("serviceWorker" in navigator)) return;
-
-  setupUpdateUI();
-
-  try {
-    swRegistration = await navigator.serviceWorker.register("/sw.js");
-
-    // If there's already a waiting SW (user visited before), prompt immediately
-    if (swRegistration.waiting) showUpdateBanner();
-
-    // Listen for new SW installing
-    swRegistration.addEventListener("updatefound", () => {
-      const newWorker = swRegistration.installing;
-      if (!newWorker) return;
-
-      newWorker.addEventListener("statechange", () => {
-        // "installed" + there's an existing controller means update is ready
-        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-          showUpdateBanner();
-        }
-      });
-    });
-
-    // Optional: periodically check for updates (mobile-friendly)
-    // Checks every 30 minutes while app is open
-    setInterval(() => {
-      swRegistration?.update().catch(() => {});
-    }, 30 * 60 * 1000);
-
-  } catch (err) {
-    console.error("SW registration failed:", err);
-  }
-}
-
 
 // ===============================
 // DOM HELPERS
