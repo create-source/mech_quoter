@@ -40,7 +40,7 @@
         { "code": "intake_manifold_gasket", "name": "Intake Manifold Gasket Replacement", "labor_hours_min": 3.0, "labor_hours_max": 8.0 },
         { "code": "intake_manifold_replace", "name": "Intake Manifold Replacement", "labor_hours_min": 3.5, "labor_hours_max": 9.0 },
         { "code": "oil_filter_housing", "name": "Oil Filter Housing Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
-        { "code": "oil_filter_housing_gasket", "name": "Oil Filter Housing Gasket Replacement", "labor_hours_min": 1.2, "labor_hours_max": 4.0 }
+        { "code": "oil_filter_housing_gasket", "name": "Oil Filter Housing Gasket Replacement", "labor_hours_min": 1.2, "labor_hours_max": 4.0 },
         { "code": "oil_cooler", "name": "Oil Cooler Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0 },
         { "code": "rear_main_seal", "name": "Rear Main Seal Replacement", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
         { "code": "front_main_seal", "name": "Front Crank Seal Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0 },
@@ -128,7 +128,7 @@
         { "code": "trans_mount", "name": "Transmission Mount Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.0 },
         { "code": "trans_replacement", "name": "Transmission Replacement", "labor_hours_min": 10.0, "labor_hours_max": 18.0 },
         { "code": "trans_pan_gasket", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
-        { "code": "trans_mount", "name": "Transmission Mount Replacement", "labor_hours_min": 1.0, "labor_hours_max": 3.5 }
+        { "code": "mount_replacement", "name": "Transmission Mount Replacement", "labor_hours_min": 1.0, "labor_hours_max": 3.5 }
       ]
     },
     {
