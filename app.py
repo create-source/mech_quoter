@@ -52,7 +52,7 @@ def vehicle_makes(year: int):
         makes = [m for m in makes if m in POPULAR_MAKES]
         return {"makes": makes}
     except Exception:
-        return {"makes": []}
+        return {"makes": POPULAR_MAKES}
 
 @app.get("/vehicle/models")
 def vehicle_models(year: int, make: str):
