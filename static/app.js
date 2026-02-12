@@ -5,14 +5,22 @@ function money(n) {
   return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
+function setStatus(msg = "", isError = false) {
+  const box = $("statusBox");
+  if (!box) return;
+  box.textContent = msg;
+  box.classList.toggle("error", !!isError);
+}
+
 async function apiGet(url) {
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`GET ${url} failed: ${r.status}`);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
   return r.json();
 }
 
 function setOptions(selectEl, items, placeholder) {
   selectEl.innerHTML = "";
+
   const ph = document.createElement("option");
   ph.value = "";
   ph.textContent = placeholder;
@@ -33,134 +41,152 @@ let servicesByCategory = new Map();
 window.addEventListener("DOMContentLoaded", () => {
   init().catch((e) => {
     console.error(e);
-    const result = $("result");
-    if (result) result.textContent = `UI init failed: ${e.message}`;
+    setStatus(`UI init failed: ${e.message}`, true);
   });
 });
 
 async function init() {
-  // Required elements (must exist in index.html)
-  const yearSel = $("year");
-  const makeSel = $("make");
-  const modelSel = $("model");
-  const categorySel = $("category");
-  const serviceSel = $("service");
-  const partsPrice = $("partsPrice");
-  const btn = $("estimateBtn");
-  const result = $("result");
-
-  if (!yearSel || !makeSel || !modelSel || !categorySel || !serviceSel || !partsPrice || !btn || !result) {
-    throw new Error("index.html is missing one or more required elements.");
+  // Ensure all required elements exist (prevents null addEventListener)
+  const requiredIds = [
+    "year","make","model","category","service",
+    "laborHours","partsPrice","laborRate","notes",
+    "estimateBtn","statusBox"
+  ];
+  for (const id of requiredIds) {
+    if (!$(id)) throw new Error(`Missing element #${id} in index.html`);
   }
 
-  // Years
+  // Load years
   const years = await apiGet("/vehicle/years");
-  setOptions(yearSel, years.map((y) => ({ value: String(y), label: String(y) })), "Select year");
+  setOptions($("year"), years.map(y => ({ value: String(y), label: String(y) })), "Select year");
 
-  // Catalog
+  // Load catalog
   catalog = await apiGet("/catalog");
-  categories = (catalog.categories || []).map((c) => ({ key: c.key, name: c.name, services: c.services || [] }));
-  servicesByCategory = new Map(categories.map((c) => [c.key, c.services]));
+  $("laborRate").value = String(catalog.labor_rate ?? 90);
 
-  setOptions(categorySel, categories.map((c) => ({ value: c.key, label: c.name })), "Select category");
+  categories = (catalog.categories || []).map(c => ({
+    key: c.key,
+    name: c.name,
+    services: c.services || []
+  }));
+  servicesByCategory = new Map(categories.map(c => [c.key, c.services]));
 
-  // Disable until needed
-  makeSel.disabled = true;
-  modelSel.disabled = true;
-  serviceSel.disabled = true;
+  setOptions(
+    $("category"),
+    categories.map(c => ({ value: c.key, label: c.name })),
+    "Select category"
+  );
+
+  // Init dropdowns disabled until selections happen
+  $("make").disabled = true;
+  $("model").disabled = true;
+  $("service").disabled = true;
+
+  setOptions($("make"), [], "Select make");
+  setOptions($("model"), [], "Select model");
+  setOptions($("service"), [], "Select service");
 
   // Events
-  yearSel.addEventListener("change", onYearChange);
-  makeSel.addEventListener("change", onMakeChange);
-  categorySel.addEventListener("change", onCategoryChange);
-  btn.addEventListener("click", onEstimate);
+  $("year").addEventListener("change", onYearChange);
+  $("make").addEventListener("change", onMakeChange);
+  $("category").addEventListener("change", onCategoryChange);
+  $("estimateBtn").addEventListener("click", onEstimate);
 
-  // Initial blank options
-  setOptions(makeSel, [], "Select make");
-  setOptions(modelSel, [], "Select model");
-  setOptions(serviceSel, [], "Select service");
+  setStatus(""); // clear
 }
 
 async function onYearChange() {
   const year = $("year").value;
-  const makeSel = $("make");
-  const modelSel = $("model");
 
-  // reset
-  setOptions(makeSel, [], year ? "Loading makes..." : "Select make");
-  setOptions(modelSel, [], "Select model");
-  makeSel.disabled = !year;
-  modelSel.disabled = true;
+  // Reset dependent fields
+  setOptions($("make"), [], year ? "Loading makes..." : "Select make");
+  setOptions($("model"), [], "Select model");
+  $("make").disabled = !year;
+  $("model").disabled = true;
 
   if (!year) return;
 
-  const res = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`);
-  const makes = (res.makes || []).map((m) => ({ value: m, label: m }));
-  setOptions(makeSel, makes, "Select make");
-  makeSel.disabled = false;
+  try {
+    setStatus("");
+    const res = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`);
+    const makes = (res.makes || []).map(m => ({ value: m, label: m }));
+
+    setOptions($("make"), makes, "Select make");
+    $("make").disabled = false;
+  } catch (e) {
+    console.error(e);
+    setOptions($("make"), [], "Select make");
+    $("make").disabled = false;
+    setStatus("Could not load makes. Try a different year.", true);
+  }
 }
 
 async function onMakeChange() {
   const year = $("year").value;
   const make = $("make").value;
-  const modelSel = $("model");
 
-  setOptions(modelSel, [], make ? "Loading models..." : "Select model");
-  modelSel.disabled = !(year && make);
+  setOptions($("model"), [], make ? "Loading models..." : "Select model");
+  $("model").disabled = !(year && make);
 
   if (!year || !make) return;
 
-  const res = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
-  const models = (res.models || []).map((m) => ({ value: m, label: m }));
-  setOptions(modelSel, models, "Select model");
-  modelSel.disabled = false;
+  try {
+    setStatus("");
+    const res = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
+    const models = (res.models || []).map(m => ({ value: m, label: m }));
+
+    setOptions($("model"), models, "Select model");
+    $("model").disabled = false;
+  } catch (e) {
+    console.error(e);
+    setOptions($("model"), [], "Select model");
+    $("model").disabled = false;
+    setStatus("Could not load models. Try another make/year.", true);
+  }
 }
 
 function onCategoryChange() {
   const catKey = $("category").value;
-  const serviceSel = $("service");
-
   const list = servicesByCategory.get(catKey) || [];
-  const items = list.map((s) => ({ value: s.code, label: s.name }));
 
-  setOptions(serviceSel, items, "Select service");
-  serviceSel.disabled = !catKey;
+  const items = list.map(s => ({ value: s.code, label: s.name }));
+  setOptions($("service"), items, "Select service");
+  $("service").disabled = !catKey;
+
+  setStatus("");
 }
 
 function onEstimate() {
   const catKey = $("category").value;
   const svcCode = $("service").value;
 
-  if (!catKey) {
-    $("result").textContent = "Pick a category.";
-    return;
-  }
-  if (!svcCode) {
-    $("result").textContent = "Pick a service.";
-    return;
-  }
+  if (!catKey) return setStatus("Pick a category.", true);
+  if (!svcCode) return setStatus("Pick a service.", true);
 
+  const laborHours = Number($("laborHours").value || 0);
   const parts = Number($("partsPrice").value || 0);
-  const rate = Number((catalog && catalog.labor_rate) || 90);
+  const rate = Number($("laborRate").value || (catalog?.labor_rate ?? 90));
+  const notes = ($("notes").value || "").trim();
 
   const list = servicesByCategory.get(catKey) || [];
-  const svc = list.find((s) => s.code === svcCode);
+  const svc = list.find(s => s.code === svcCode);
+  if (!svc) return setStatus("Service not found in catalog.", true);
 
-  if (!svc) {
-    $("result").textContent = "Service not found in catalog.";
-    return;
+  if (laborHours <= 0) {
+    // If user didn't enter hours, default to midpoint of service range
+    const minH = Number(svc.labor_hours_min ?? 0);
+    const maxH = Number(svc.labor_hours_max ?? minH);
+    const midH = (minH + maxH) / 2;
+    $("laborHours").value = midH.toFixed(1);
   }
 
-  const minH = Number(svc.labor_hours_min ?? 0);
-  const maxH = Number(svc.labor_hours_max ?? minH);
-  const midH = (minH + maxH) / 2;
-
-  const labor = midH * rate;
+  const finalHours = Number($("laborHours").value || 0);
+  const labor = finalHours * rate;
   const total = labor + parts;
 
-  $("result").innerHTML =
-    `<div><b>${svc.name}</b></div>` +
-    `<div style="margin-top:8px;"><b>Labor:</b> ${money(labor)} (${midH.toFixed(1)} hrs @ ${money(rate)}/hr)</div>` +
-    `<div><b>Parts:</b> ${money(parts)}</div>` +
-    `<div style="margin-top:8px;"><b>Total:</b> ${money(total)}</div>`;
+  setStatus(
+    `${svc.name} — Labor ${money(labor)} (${finalHours.toFixed(1)} hrs @ ${money(rate)}/hr) | Parts ${money(parts)} | Total ${money(total)}`
+    + (notes ? ` | Notes: ${notes}` : ""),
+    false
+  );
 }
