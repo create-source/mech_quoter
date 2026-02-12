@@ -1,19 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import json
 import httpx
 from datetime import datetime
+from urllib.parse import quote
 
 app = FastAPI()
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-CATALOG_PATH = BASE_DIR / "services_catalog.json"
 INDEX_PATH = BASE_DIR / "index.html"
-
-STATIC_DIR.mkdir(exist_ok=True)
+CATALOG_PATH = BASE_DIR / "services_catalog.json"
 
 POPULAR_MAKES = [
     "TOYOTA","HONDA","FORD","CHEVROLET","NISSAN","HYUNDAI","KIA","DODGE","JEEP",
@@ -25,7 +24,7 @@ def load_catalog():
         return {"labor_rate": 90, "categories": []}
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
 
-# Serve static assets from /static/*
+# Static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
 @app.get("/", response_class=HTMLResponse)
@@ -42,38 +41,30 @@ def vehicle_years():
 
 @app.get("/vehicle/makes")
 def vehicle_makes(year: int):
-    """
-    Returns: { "makes": ["TOYOTA","HONDA", ...] }
-    VPIC endpoint:
-      https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/{year}?format=json
-    """
+    # Correct vPIC endpoint
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/{year}?format=json"
     try:
-        r = httpx.get(url, timeout=15)
+        r = httpx.get(url, timeout=20)
         r.raise_for_status()
         data = r.json()
         results = data.get("Results", []) or []
         makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
-        makes = [m for m in makes if m in POPULAR_MAKES]  # hard-limit popular only
+        makes = [m for m in makes if m in POPULAR_MAKES]
         return {"makes": makes}
     except Exception:
-        # Never crash UI; just return empty list if VPIC fails
         return {"makes": []}
 
 @app.get("/vehicle/models")
 def vehicle_models(year: int, make: str):
-    """
-    Returns: { "models": ["CAMRY","COROLLA", ...] }
-    VPIC endpoint:
-      https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json
-    """
     make_clean = (make or "").strip()
     if not make_clean:
         return {"models": []}
 
-    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make_clean}/modelyear/{year}?format=json"
+    # Correct vPIC endpoint (URL-encode make)
+    make_q = quote(make_clean)
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make_q}/modelyear/{year}?format=json"
     try:
-        r = httpx.get(url, timeout=15)
+        r = httpx.get(url, timeout=20)
         r.raise_for_status()
         data = r.json()
         results = data.get("Results", []) or []
