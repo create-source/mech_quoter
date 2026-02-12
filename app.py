@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 # Serve static assets: /static/app.js, /static/styles.css, /static/sw.js, /static/icons/*
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # -----------------------------
