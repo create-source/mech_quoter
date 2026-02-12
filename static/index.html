@@ -6,6 +6,7 @@
   <meta name="description" content="Repair estimator with PDF export." />
   <title>Repair Estimator</title>
 
+  <!-- Styles -->
   <link rel="stylesheet" href="/static/style.css?v=1" />
 
   <!-- PWA -->
@@ -15,13 +16,33 @@
   <!-- iOS home-screen support -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Estimator" />
   <link rel="apple-touch-icon" href="/static/icon-192.png" />
+
+  <!-- Optional: helps avoid weird caching in some mobile webviews -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
 </head>
 
 <body>
+  <noscript>
+    <div class="container">
+      <div class="card">
+        <h2>JavaScript Required</h2>
+        <p>This app requires JavaScript to run. Please enable JavaScript and reload.</p>
+      </div>
+    </div>
+  </noscript>
+
   <div class="container">
-    <header>
-      <h1>Repair Estimator</h1>
+    <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <h1 style="margin:0;">Repair Estimator</h1>
+
+      <!-- Optional install button (only shows when supported) -->
+      <button id="installBtn" type="button" style="display:none; margin-top:0;">
+        Install App
+      </button>
     </header>
 
     <!-- Vehicle -->
@@ -34,15 +55,17 @@
       <div class="grid3">
         <div>
           <label for="year">Year</label>
-          <select id="year" name="year"></select>
+          <select id="year" name="year" autocomplete="off"></select>
         </div>
+
         <div>
           <label for="make">Make (popular)</label>
-          <select id="make" name="make"></select>
+          <select id="make" name="make" autocomplete="off"></select>
         </div>
+
         <div>
           <label for="model">Model</label>
-          <select id="model" name="model"></select>
+          <select id="model" name="model" autocomplete="off"></select>
         </div>
       </div>
     </section>
@@ -54,11 +77,12 @@
       <div class="grid2">
         <div>
           <label for="category">Category</label>
-          <select id="category" name="category"></select>
+          <select id="category" name="category" autocomplete="off"></select>
         </div>
+
         <div>
           <label for="service">Service</label>
-          <select id="service" name="service"></select>
+          <select id="service" name="service" autocomplete="off"></select>
         </div>
       </div>
 
@@ -67,10 +91,12 @@
           <label for="laborHours">Labor Hours</label>
           <input id="laborHours" name="laborHours" type="number" step="0.1" value="0" inputmode="decimal" />
         </div>
+
         <div>
           <label for="partsPrice">Parts Price (optional)</label>
           <input id="partsPrice" name="partsPrice" type="number" step="0.01" value="0" inputmode="decimal" />
         </div>
+
         <div>
           <label for="laborRate">Labor Rate ($/hr)</label>
           <input id="laborRate" name="laborRate" type="number" step="1" value="90" inputmode="numeric" />
@@ -98,13 +124,16 @@
       </div>
 
       <canvas id="sigCanvas" class="sig-canvas"></canvas>
-      <div class="sig-hint">Sign with finger or mouse. Signature will be included in PDF.</div>
+      <div class="sig-hint">
+        Sign with finger or mouse. Signature will be included in PDF.
+      </div>
 
       <div class="grid2">
         <div>
           <label for="customerName">Customer Name</label>
           <input id="customerName" name="customerName" type="text" placeholder="Customer name" autocomplete="name" />
         </div>
+
         <div>
           <label for="customerPhone">Customer Phone (optional)</label>
           <input id="customerPhone" name="customerPhone" type="tel" placeholder="(555) 555-5555" autocomplete="tel" />
@@ -113,13 +142,27 @@
     </section>
   </div>
 
+  <!-- App JS (this file registers the service worker already) -->
   <script defer src="/static/app.js?v=1"></script>
 
-  <!-- Register SW at ROOT for best scope -->
+  <!-- Optional install prompt helper (safe no-op on iOS) -->
   <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(console.error);
+    let deferredPrompt = null;
+    const installBtn = document.getElementById("installBtn");
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (installBtn) installBtn.style.display = "inline-block";
+    });
+
+    if (installBtn) {
+      installBtn.addEventListener("click", async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice.catch(() => {});
+        deferredPrompt = null;
+        installBtn.style.display = "none";
       });
     }
   </script>
