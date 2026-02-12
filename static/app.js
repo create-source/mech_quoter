@@ -1,14 +1,7 @@
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("app.js loaded ✅");
-
+document.addEventListener("DOMContentLoaded", async () => {
   const yearEl = document.getElementById("year");
   const makeEl = document.getElementById("make");
   const modelEl = document.getElementById("model");
-
-  if (!yearEl || !makeEl || !modelEl) {
-    console.error("Missing select IDs. Need #year, #make, #model", { yearEl, makeEl, modelEl });
-    return;
-  }
 
   const setOptions = (select, items, placeholder) => {
     select.innerHTML = "";
@@ -17,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ph.textContent = placeholder;
     select.appendChild(ph);
 
-    items.forEach((v) => {
+    items.forEach(v => {
       const opt = document.createElement("option");
       opt.value = v;
       opt.textContent = v;
@@ -25,57 +18,48 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  const unwrapList = (data, key) => {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray(data[key])) return data[key];
-    return [];
-  };
+  let catalog = {};
 
-  async function loadMakes() {
-    const year = yearEl.value || "";
-    console.log("Loading makes for year:", year);
+  try {
+    // Load all vehicle data once
+    const res = await fetch("/catalog");
+    catalog = await res.json();
+    console.log("Catalog loaded:", catalog);
+  } catch (err) {
+    console.error("Failed to load catalog:", err);
+    return;
+  }
 
+  // Populate Years
+  try {
+    const res = await fetch("/years");
+    const years = await res.json();
+    setOptions(yearEl, years, "Select year");
+  } catch (err) {
+    console.error("Failed to load years:", err);
+  }
+
+  // When Year changes → load Makes
+  yearEl.addEventListener("change", () => {
+    const year = yearEl.value;
     setOptions(makeEl, [], "Select make");
     setOptions(modelEl, [], "Select model");
 
-    try {
-      const res = await fetch(`/api/makes?year=${encodeURIComponent(year)}`);
-      if (!res.ok) throw new Error(`GET /api/makes failed: ${res.status}`);
-      const data = await res.json();
-      const makes = unwrapList(data, "makes");
+    if (!year || !catalog[year]) return;
 
-      console.log("Makes returned:", makes);
-      setOptions(makeEl, makes, "Select make");
-    } catch (err) {
-      console.error("Error loading makes:", err);
-    }
-  }
+    const makes = Object.keys(catalog[year]);
+    setOptions(makeEl, makes, "Select make");
+  });
 
-  async function loadModels() {
-    const year = yearEl.value || "";
-    const make = makeEl.value || "";
-    console.log("Loading models for:", { year, make });
-
+  // When Make changes → load Models
+  makeEl.addEventListener("change", () => {
+    const year = yearEl.value;
+    const make = makeEl.value;
     setOptions(modelEl, [], "Select model");
-    if (!make) return;
 
-    try {
-      const res = await fetch(`/api/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
-      if (!res.ok) throw new Error(`GET /api/models failed: ${res.status}`);
-      const data = await res.json();
-      const models = unwrapList(data, "models");
+    if (!year || !make || !catalog[year][make]) return;
 
-      console.log("Models returned:", models);
-      setOptions(modelEl, models, "Select model");
-    } catch (err) {
-      console.error("Error loading models:", err);
-    }
-  }
-
-  // Hook changes
-  yearEl.addEventListener("change", loadMakes);
-  makeEl.addEventListener("change", loadModels);
-
-  // Initial load
-  loadMakes();
+    const models = catalog[year][make];
+    setOptions(modelEl, models, "Select model");
+  });
 });
