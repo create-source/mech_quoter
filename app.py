@@ -78,6 +78,17 @@ def vehicle_models(year: int, make: str):
 def catalog():
     return load_catalog()
 
+from fastapi.responses import FileResponse
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(BASE_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(BASE_DIR / "sw.js", media_type="application/javascript")
+
+
 @app.get("/categories")
 def categories():
     cat = load_catalog()
