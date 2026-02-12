@@ -1,19 +1,15 @@
+/* static/app.js */
+
 function $(id) {
   return document.getElementById(id);
 }
 
 function money(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
+  const x = Number(n || 0);
+  return `$${x.toFixed(2)}`;
 }
 
-async function apiGet(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`GET ${url} failed: ${r.status}`);
-  return r.json();
-}
-
-function setOptions(selectEl, items, placeholder) {
+function setOptions(selectEl, items, { placeholder = "Select...", valueKey = null, textKey = null } = {}) {
   selectEl.innerHTML = "";
 
   const ph = document.createElement("option");
@@ -21,171 +17,266 @@ function setOptions(selectEl, items, placeholder) {
   ph.textContent = placeholder;
   selectEl.appendChild(ph);
 
-  for (const it of items) {
+  for (const item of items) {
     const opt = document.createElement("option");
-    if (typeof it === "string") {
-      opt.value = it;
-      opt.textContent = it;
-    } else {
-      opt.value = it.value;
-      opt.textContent = it.label;
-    }
+    if (valueKey) opt.value = item[valueKey];
+    else opt.value = String(item);
+
+    if (textKey) opt.textContent = item[textKey];
+    else opt.textContent = String(item);
+
     selectEl.appendChild(opt);
   }
+
+  selectEl.value = "";
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  init().catch((e) => {
-    console.error(e);
-    const box = $("statusBox");
-    if (box) box.textContent = `UI init failed: ${e.message}`;
-  });
-});
+async function apiGet(path) {
+  const r = await fetch(path, { method: "GET" });
+  if (!r.ok) throw new Error(`GET ${path} failed: ${r.status}`);
+  return await r.json();
+}
 
-let catalog = null;
-let servicesByCategory = new Map();
+async function apiPost(path, payload) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`POST ${path} failed: ${r.status}`);
+  return r;
+}
+
+let catalogData = null;
+
+function findCategoryByKey(key) {
+  return (catalogData?.categories || []).find((c) => c.key === key) || null;
+}
+
+function findServiceByCode(categoryKey, serviceCode) {
+  const cat = findCategoryByKey(categoryKey);
+  if (!cat) return null;
+  return (cat.services || []).find((s) => s.code === serviceCode) || null;
+}
+
+function renderEstimate(statusBox, payload) {
+  const laborTotal = Number(payload.laborHours || 0) * Number(payload.laborRate || 0);
+  const parts = Number(payload.partsPrice || 0);
+  const total = laborTotal + parts;
+
+  statusBox.innerHTML = `
+    <div style="font-weight:700; margin-bottom:6px;">Estimate</div>
+    <div><strong>Labor:</strong> ${money(laborTotal)} (${Number(payload.laborHours || 0).toFixed(1)} hrs @ ${money(payload.laborRate).replace("$", "$")}/hr)</div>
+    <div><strong>Parts:</strong> ${money(parts)}</div>
+    <div style="margin-top:6px; font-size:1.05em;"><strong>Total:</strong> ${money(total)}</div>
+  `;
+}
 
 async function init() {
+  // Grab elements
   const yearSel = $("year");
   const makeSel = $("make");
   const modelSel = $("model");
   const categorySel = $("category");
   const serviceSel = $("service");
+
   const laborHoursEl = $("laborHours");
   const partsPriceEl = $("partsPrice");
   const laborRateEl = $("laborRate");
   const notesEl = $("notes");
+
   const estimateBtn = $("estimateBtn");
+  const pdfBtn = $("pdfBtn");
   const statusBox = $("statusBox");
 
-  // Guard (helps you instantly if IDs ever change)
-  const required = [yearSel, makeSel, modelSel, categorySel, serviceSel, laborHoursEl, partsPriceEl, laborRateEl, notesEl, estimateBtn, statusBox];
-  if (required.some((x) => !x)) {
-    throw new Error("One or more required elements are missing in index.html (check IDs).");
+  // Guard against missing IDs (prevents addEventListener null crash)
+  const required = [
+    yearSel, makeSel, modelSel, categorySel, serviceSel,
+    laborHoursEl, partsPriceEl, laborRateEl, notesEl,
+    estimateBtn, pdfBtn, statusBox
+  ];
+  if (required.some((el) => !el)) {
+    throw new Error("Missing one or more required elements. Check your index.html IDs.");
   }
 
-  // Load years
-  const years = await apiGet("/vehicle/years"); // expects: [2027, 2026, ...]
-  setOptions(yearSel, years.map((y) => ({ value: String(y), label: String(y) })), "Select year");
+  // ---------- Load catalog ----------
+  statusBox.textContent = "Loading catalog...";
+  catalogData = await apiGet("/catalog");
 
-  // Load catalog
-  catalog = await apiGet("/catalog");
-  laborRateEl.value = Number(catalog.labor_rate || 90);
+  // Set labor rate default from catalog if present
+  if (catalogData?.labor_rate && !laborRateEl.value) {
+    laborRateEl.value = String(catalogData.labor_rate);
+  } else if (catalogData?.labor_rate && Number(laborRateEl.value || 0) === 0) {
+    laborRateEl.value = String(catalogData.labor_rate);
+  }
 
-  const categories = (catalog.categories || []).map((c) => ({
-    key: c.key,
-    name: c.name,
-    services: c.services || [],
-  }));
+  // Categories
+  const cats = (catalogData.categories || []).map((c) => ({ key: c.key, name: c.name }));
+  setOptions(categorySel, cats, { placeholder: "Select category", valueKey: "key", textKey: "name" });
 
-  servicesByCategory = new Map();
-  for (const c of categories) servicesByCategory.set(c.key, c.services);
+  // Services starts empty until category selected
+  setOptions(serviceSel, [], { placeholder: "Select service" });
 
-  setOptions(categorySel, categories.map((c) => ({ value: c.key, label: c.name })), "Select category");
-  setOptions(serviceSel, [], "Select service");
+  // ---------- Load years ----------
+  statusBox.textContent = "Loading years...";
+  const years = await apiGet("/vehicle/years");
+  setOptions(yearSel, years, { placeholder: "Select year" });
 
-  // Vehicle events
-  yearSel.addEventListener("change", onYearChange);
-  makeSel.addEventListener("change", onMakeChange);
+  // Makes + Models start empty
+  setOptions(makeSel, [], { placeholder: "Select make" });
+  setOptions(modelSel, [], { placeholder: "Select model" });
 
-  // Service events
-  categorySel.addEventListener("change", onCategoryChange);
-  serviceSel.addEventListener("change", onServiceChange);
+  statusBox.textContent = "";
 
-  // Button
-  estimateBtn.addEventListener("click", () => {
-    const hours = Number(laborHoursEl.value || 0);
-    const rate = Number(laborRateEl.value || 90);
-    const parts = Number(partsPriceEl.value || 0);
+  // ---------- Events: Vehicle ----------
+  yearSel.addEventListener("change", async () => {
+    const year = yearSel.value;
+    setOptions(makeSel, [], { placeholder: "Loading makes..." });
+    setOptions(modelSel, [], { placeholder: "Select model" });
 
-    const labor = hours * rate;
-    const total = labor + parts;
+    if (!year) {
+      setOptions(makeSel, [], { placeholder: "Select make" });
+      return;
+    }
 
-    statusBox.innerHTML = `
-      <div><b>Labor:</b> ${money(labor)} (${hours.toFixed(1)} hrs @ ${money(rate)}/hr)</div>
-      <div><b>Parts:</b> ${money(parts)}</div>
-      <div style="margin-top:6px;"><b>Total:</b> ${money(total)}</div>
-    `;
+    try {
+      const data = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`);
+      const makes = Array.isArray(data) ? data : (data.makes || []);
+      setOptions(makeSel, makes, { placeholder: "Select make" });
+    } catch (e) {
+      console.error(e);
+      setOptions(makeSel, [], { placeholder: "Makes unavailable" });
+      statusBox.textContent = "Could not load makes. Try again.";
+    }
   });
 
-  // Prime initial state
-  setOptions(makeSel, [], "Select make");
-  setOptions(modelSel, [], "Select model");
-  statusBox.textContent = "";
+  makeSel.addEventListener("change", async () => {
+    const year = yearSel.value;
+    const make = makeSel.value;
+
+    setOptions(modelSel, [], { placeholder: "Loading models..." });
+
+    if (!year || !make) {
+      setOptions(modelSel, [], { placeholder: "Select model" });
+      return;
+    }
+
+    try {
+      const data = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`);
+      const models = Array.isArray(data) ? data : (data.models || []);
+      setOptions(modelSel, models, { placeholder: "Select model" });
+    } catch (e) {
+      console.error(e);
+      setOptions(modelSel, [], { placeholder: "Models unavailable" });
+      statusBox.textContent = "Could not load models. Try again.";
+    }
+  });
+
+  // ---------- Events: Service ----------
+  categorySel.addEventListener("change", () => {
+    const key = categorySel.value;
+    const cat = findCategoryByKey(key);
+
+    const services = (cat?.services || []).map((s) => ({
+      code: s.code,
+      name: s.name,
+    }));
+
+    setOptions(serviceSel, services, { placeholder: "Select service", valueKey: "code", textKey: "name" });
+
+    // Reset labor hours on category change
+    laborHoursEl.value = "0";
+  });
+
+  serviceSel.addEventListener("change", () => {
+    const catKey = categorySel.value;
+    const svcCode = serviceSel.value;
+    const svc = findServiceByCode(catKey, svcCode);
+
+    // Default labor hours from catalog
+    if (svc && typeof svc.labor_hours_min === "number") {
+      laborHoursEl.value = String(svc.labor_hours_min);
+    }
+  });
+
+  // ---------- Buttons ----------
+  estimateBtn.addEventListener("click", () => {
+    try {
+      const payload = {
+        year: yearSel.value,
+        make: makeSel.value,
+        model: modelSel.value,
+        categoryKey: categorySel.value,
+        category: categorySel.options[categorySel.selectedIndex]?.textContent || "",
+        serviceCode: serviceSel.value,
+        service: serviceSel.options[serviceSel.selectedIndex]?.textContent || "",
+        laborHours: Number(laborHoursEl.value || 0),
+        partsPrice: Number(partsPriceEl.value || 0),
+        laborRate: Number(laborRateEl.value || 90),
+        notes: notesEl.value || "",
+      };
+
+      if (!payload.year || !payload.make || !payload.model) {
+        statusBox.textContent = "Select Year, Make, and Model.";
+        return;
+      }
+      if (!payload.categoryKey || !payload.serviceCode) {
+        statusBox.textContent = "Select Category and Service.";
+        return;
+      }
+
+      renderEstimate(statusBox, payload);
+    } catch (e) {
+      console.error(e);
+      statusBox.textContent = `Estimate error: ${e.message}`;
+    }
+  });
+
+  pdfBtn.addEventListener("click", async () => {
+    try {
+      const payload = {
+        year: yearSel.value,
+        make: makeSel.value,
+        model: modelSel.value,
+        category: categorySel.options[categorySel.selectedIndex]?.textContent || "",
+        service: serviceSel.options[serviceSel.selectedIndex]?.textContent || "",
+        laborHours: Number(laborHoursEl.value || 0),
+        partsPrice: Number(partsPriceEl.value || 0),
+        laborRate: Number(laborRateEl.value || 90),
+        notes: notesEl.value || "",
+      };
+
+      if (!payload.year || !payload.make || !payload.model) {
+        statusBox.textContent = "Select Year, Make, and Model before PDF.";
+        return;
+      }
+      if (!categorySel.value || !serviceSel.value) {
+        statusBox.textContent = "Select Category and Service before PDF.";
+        return;
+      }
+
+      statusBox.textContent = "Generating PDF...";
+
+      const r = await apiPost("/estimate/pdf", payload);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+      statusBox.textContent = "";
+    } catch (e) {
+      console.error(e);
+      statusBox.textContent = `PDF error: ${e.message}`;
+    }
+  });
 }
 
-async function onYearChange() {
-  const year = $("year").value;
-  const makeSel = $("make");
-  const modelSel = $("model");
-  const statusBox = $("statusBox");
-
-  setOptions(makeSel, [], "Loading makes...");
-  setOptions(modelSel, [], "Select model");
-
-  if (!year) return;
-
-  try {
-    const res = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`); // expects: { makes: [...] }
-    const makes = res.makes || [];
-    setOptions(makeSel, makes.map((m) => ({ value: m, label: m })), "Select make");
-    statusBox.textContent = makes.length ? "" : "No makes returned (server or VPIC issue).";
-  } catch (e) {
-    console.error(e);
-    setOptions(makeSel, [], "Select make");
-    statusBox.textContent = `Make load failed: ${e.message}`;
-  }
-}
-
-async function onMakeChange() {
-  const year = $("year").value;
-  const make = $("make").value;
-  const modelSel = $("model");
-  const statusBox = $("statusBox");
-
-  setOptions(modelSel, [], "Loading models...");
-  if (!year || !make) {
-    setOptions(modelSel, [], "Select model");
-    return;
-  }
-
-  try {
-    const res = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`); // expects: { models: [...] }
-    const models = res.models || [];
-    setOptions(modelSel, models.map((m) => ({ value: m, label: m })), "Select model");
-    statusBox.textContent = models.length ? "" : "No models returned (server or VPIC issue).";
-  } catch (e) {
-    console.error(e);
-    setOptions(modelSel, [], "Select model");
-    statusBox.textContent = `Model load failed: ${e.message}`;
-  }
-}
-
-function onCategoryChange() {
-  const categoryKey = $("category").value;
-  const list = servicesByCategory.get(categoryKey) || [];
-  setOptions($("service"), list.map((s) => ({ value: s.code, label: s.name })), "Select service");
-  $("laborHours").value = "0";
-}
-
-function onServiceChange() {
-  const catKey = $("category").value;
-  const code = $("service").value;
-  const list = servicesByCategory.get(catKey) || [];
-  const svc = list.find((s) => s.code === code);
-  if (!svc) return;
-
-  const min = Number(svc.labor_hours_min ?? 0);
-  const max = Number(svc.labor_hours_max ?? min);
-  const mid = (min + max) / 2;
-  $("laborHours").value = mid.toFixed(1);
-}
-
-// Add this INSIDE your existing DOMContentLoaded handler, before init():
+// Boot
 window.addEventListener("DOMContentLoaded", () => {
-  // PWA service worker
+  // PWA service worker (safe if file exists)
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
   }
 
   init().catch((e) => {
