@@ -1,105 +1,182 @@
-document.addEventListener("DOMContentLoaded", async () => {
-  console.log("app.js loaded ✅");
+function $(id) {
+  return document.getElementById(id);
+}
 
-  const yearEl = document.getElementById("year");
-  const makeEl = document.getElementById("make");
-  const modelEl = document.getElementById("model");
+function money(n) {
+  const v = Number(n || 0);
+  return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
 
-  if (!yearEl || !makeEl || !modelEl) {
-    console.error("Missing select IDs. Need #year, #make, #model", { yearEl, makeEl, modelEl });
-    return;
-  }
+async function apiGet(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`GET ${url} failed: ${r.status}`);
+  return r.json();
+}
 
-  const setOptions = (select, items, placeholder) => {
-    select.innerHTML = "";
-    const ph = document.createElement("option");
-    ph.value = "";
-    ph.textContent = placeholder;
-    select.appendChild(ph);
+function setOptions(selectEl, items, placeholder) {
+  selectEl.innerHTML = "";
 
-    (items || []).forEach((v) => {
-      const opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      select.appendChild(opt);
-    });
-  };
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = placeholder;
+  selectEl.appendChild(ph);
 
-  const isYearKey = (k) => /^\d{4}$/.test(String(k)); // "2019"
-
-  const normalizeModels = (modelsRaw) => {
-    if (!modelsRaw) return [];
-    if (Array.isArray(modelsRaw)) return modelsRaw;
-    if (typeof modelsRaw === "object") {
-      if (Array.isArray(modelsRaw.models)) return modelsRaw.models;
-      return Object.keys(modelsRaw);
+  for (const it of items) {
+    const opt = document.createElement("option");
+    if (typeof it === "string") {
+      opt.value = it;
+      opt.textContent = it;
+    } else {
+      opt.value = it.value;
+      opt.textContent = it.label;
     }
-    return [];
-  };
-
-  // ---- Load catalog ----
-  let catalog;
-  try {
-    const res = await fetch("/catalog", { cache: "no-store" });
-    if (!res.ok) throw new Error(`GET /catalog failed: ${res.status}`);
-    catalog = await res.json();
-    console.log("Catalog loaded ✅", catalog);
-  } catch (err) {
-    console.error("Failed to load catalog ❌", err);
-    setOptions(yearEl, [], "Year unavailable");
-    setOptions(makeEl, [], "Make unavailable");
-    setOptions(modelEl, [], "Model unavailable");
-    return;
+    selectEl.appendChild(opt);
   }
+}
 
-  // ---- Find vehicle tree inside catalog ----
-  // If catalog has a "vehicles" key, use that. Otherwise assume catalog itself is the vehicle tree.
-  const vehicleTree = (catalog && typeof catalog === "object" && catalog.vehicles && typeof catalog.vehicles === "object")
-    ? catalog.vehicles
-    : catalog;
-
-  // ---- Years (only 4-digit keys) ----
-  const years = Object.keys(vehicleTree || {})
-    .filter(isYearKey)
-    .sort((a, b) => Number(b) - Number(a));
-
-  console.log("Years detected:", years);
-
-  setOptions(yearEl, years, "Select year");
-  setOptions(makeEl, [], "Select make");
-  setOptions(modelEl, [], "Select model");
-
-  // ---- Year -> Makes ----
-  yearEl.addEventListener("change", () => {
-    const year = yearEl.value;
-    setOptions(makeEl, [], "Select make");
-    setOptions(modelEl, [], "Select model");
-
-    if (!year) return;
-
-    const yearData = vehicleTree[year];
-    if (!yearData || typeof yearData !== "object") return;
-
-    const makes = Object.keys(yearData).sort();
-    console.log("Makes for year", year, "=>", makes);
-    setOptions(makeEl, makes, "Select make");
-  });
-
-  // ---- Make -> Models ----
-  makeEl.addEventListener("change", () => {
-    const year = yearEl.value;
-    const make = makeEl.value;
-    setOptions(modelEl, [], "Select model");
-
-    if (!year || !make) return;
-
-    const yearData = vehicleTree[year];
-    if (!yearData || typeof yearData !== "object") return;
-
-    const modelsRaw = yearData[make];
-    const models = normalizeModels(modelsRaw).sort();
-
-    console.log("Models for", { year, make }, "=>", models);
-    setOptions(modelEl, models, "Select model");
+window.addEventListener("DOMContentLoaded", () => {
+  init().catch((e) => {
+    console.error(e);
+    const box = $("statusBox");
+    if (box) box.textContent = `UI init failed: ${e.message}`;
   });
 });
+
+let catalog = null;
+let servicesByCategory = new Map();
+
+async function init() {
+  const yearSel = $("year");
+  const makeSel = $("make");
+  const modelSel = $("model");
+  const categorySel = $("category");
+  const serviceSel = $("service");
+  const laborHoursEl = $("laborHours");
+  const partsPriceEl = $("partsPrice");
+  const laborRateEl = $("laborRate");
+  const notesEl = $("notes");
+  const estimateBtn = $("estimateBtn");
+  const statusBox = $("statusBox");
+
+  // Guard (helps you instantly if IDs ever change)
+  const required = [yearSel, makeSel, modelSel, categorySel, serviceSel, laborHoursEl, partsPriceEl, laborRateEl, notesEl, estimateBtn, statusBox];
+  if (required.some((x) => !x)) {
+    throw new Error("One or more required elements are missing in index.html (check IDs).");
+  }
+
+  // Load years
+  const years = await apiGet("/vehicle/years"); // expects: [2027, 2026, ...]
+  setOptions(yearSel, years.map((y) => ({ value: String(y), label: String(y) })), "Select year");
+
+  // Load catalog
+  catalog = await apiGet("/catalog");
+  laborRateEl.value = Number(catalog.labor_rate || 90);
+
+  const categories = (catalog.categories || []).map((c) => ({
+    key: c.key,
+    name: c.name,
+    services: c.services || [],
+  }));
+
+  servicesByCategory = new Map();
+  for (const c of categories) servicesByCategory.set(c.key, c.services);
+
+  setOptions(categorySel, categories.map((c) => ({ value: c.key, label: c.name })), "Select category");
+  setOptions(serviceSel, [], "Select service");
+
+  // Vehicle events
+  yearSel.addEventListener("change", onYearChange);
+  makeSel.addEventListener("change", onMakeChange);
+
+  // Service events
+  categorySel.addEventListener("change", onCategoryChange);
+  serviceSel.addEventListener("change", onServiceChange);
+
+  // Button
+  estimateBtn.addEventListener("click", () => {
+    const hours = Number(laborHoursEl.value || 0);
+    const rate = Number(laborRateEl.value || 90);
+    const parts = Number(partsPriceEl.value || 0);
+
+    const labor = hours * rate;
+    const total = labor + parts;
+
+    statusBox.innerHTML = `
+      <div><b>Labor:</b> ${money(labor)} (${hours.toFixed(1)} hrs @ ${money(rate)}/hr)</div>
+      <div><b>Parts:</b> ${money(parts)}</div>
+      <div style="margin-top:6px;"><b>Total:</b> ${money(total)}</div>
+    `;
+  });
+
+  // Prime initial state
+  setOptions(makeSel, [], "Select make");
+  setOptions(modelSel, [], "Select model");
+  statusBox.textContent = "";
+}
+
+async function onYearChange() {
+  const year = $("year").value;
+  const makeSel = $("make");
+  const modelSel = $("model");
+  const statusBox = $("statusBox");
+
+  setOptions(makeSel, [], "Loading makes...");
+  setOptions(modelSel, [], "Select model");
+
+  if (!year) return;
+
+  try {
+    const res = await apiGet(`/vehicle/makes?year=${encodeURIComponent(year)}`); // expects: { makes: [...] }
+    const makes = res.makes || [];
+    setOptions(makeSel, makes.map((m) => ({ value: m, label: m })), "Select make");
+    statusBox.textContent = makes.length ? "" : "No makes returned (server or VPIC issue).";
+  } catch (e) {
+    console.error(e);
+    setOptions(makeSel, [], "Select make");
+    statusBox.textContent = `Make load failed: ${e.message}`;
+  }
+}
+
+async function onMakeChange() {
+  const year = $("year").value;
+  const make = $("make").value;
+  const modelSel = $("model");
+  const statusBox = $("statusBox");
+
+  setOptions(modelSel, [], "Loading models...");
+  if (!year || !make) {
+    setOptions(modelSel, [], "Select model");
+    return;
+  }
+
+  try {
+    const res = await apiGet(`/vehicle/models?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`); // expects: { models: [...] }
+    const models = res.models || [];
+    setOptions(modelSel, models.map((m) => ({ value: m, label: m })), "Select model");
+    statusBox.textContent = models.length ? "" : "No models returned (server or VPIC issue).";
+  } catch (e) {
+    console.error(e);
+    setOptions(modelSel, [], "Select model");
+    statusBox.textContent = `Model load failed: ${e.message}`;
+  }
+}
+
+function onCategoryChange() {
+  const categoryKey = $("category").value;
+  const list = servicesByCategory.get(categoryKey) || [];
+  setOptions($("service"), list.map((s) => ({ value: s.code, label: s.name })), "Select service");
+  $("laborHours").value = "0";
+}
+
+function onServiceChange() {
+  const catKey = $("category").value;
+  const code = $("service").value;
+  const list = servicesByCategory.get(catKey) || [];
+  const svc = list.find((s) => s.code === code);
+  if (!svc) return;
+
+  const min = Number(svc.labor_hours_min ?? 0);
+  const max = Number(svc.labor_hours_max ?? min);
+  const mid = (min + max) / 2;
+  $("laborHours").value = mid.toFixed(1);
+}
