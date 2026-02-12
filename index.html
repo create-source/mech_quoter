@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Repair Estimator</title>
 
-  <!-- cache-bust so your phone/desktop doesn’t keep using old broken files -->
-  <link rel="stylesheet" href="/static/style.css?v=3" />
+  <!-- PWA -->
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <meta name="theme-color" content="#0b1220" />
+
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="container">
@@ -32,7 +35,6 @@
 
     <div class="card">
       <h2>Service</h2>
-
       <div class="grid2">
         <div>
           <label>Category</label>
@@ -64,12 +66,15 @@
         <textarea id="notes" rows="3" placeholder="Optional notes..."></textarea>
       </div>
 
-      <button id="estimateBtn" type="button">Create Estimate</button>
+      <div class="btnRow">
+        <button id="estimateBtn" type="button">Get Estimate</button>
+        <button id="pdfBtn" type="button" class="btnSecondary">Download PDF</button>
+      </div>
 
       <div id="statusBox" class="status"></div>
     </div>
   </div>
 
-  <script defer src="/static/app.js?v=3"></script>
+  <script defer src="/static/app.js"></script>
 </body>
 </html>
