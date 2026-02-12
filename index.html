@@ -6,7 +6,7 @@
   <title>Repair Estimator</title>
 
   <!-- cache-bust so your phone/desktop doesn’t keep using old broken files -->
-  <link rel="stylesheet" href="/static/style.css?v=3" />
+  <link rel="stylesheet" href="/static/style.css?v=4" />
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0b1220">
   
@@ -73,12 +73,13 @@
       </div>
 
       <button id="estimateBtn" type="button">Create Estimate</button>
+      <button id="pdfBtn" type="button">Download PDF</button>
 
       <div id="statusBox" class="status"></div>
     </div>
   </div>
 
-  <script defer src="/static/app.js?v=3"></script>
+  <script defer src="/static/app.js?v=4"></script>
   <script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
