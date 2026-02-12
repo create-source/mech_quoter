@@ -1,4 +1,10 @@
-/* static/app.js */
+/* static/app.js
+   Production-stable app.js that uses services_catalog.json via API:
+   - GET /api/categories
+   - GET /api/services/{category_key}
+   - (optional) GET /api/service/{service_code}  [not required here]
+   - Estimate/PDF send serviceCode (recommended) + service name as fallback
+*/
 
 // ===============================
 // SERVICE WORKER REGISTRATION (root scope)
@@ -9,7 +15,7 @@ if ("serviceWorker" in navigator) {
       const reg = await navigator.serviceWorker.register("/sw.js");
       console.log("Service Worker registered", reg);
 
-      // Optional: auto-refresh when a new SW takes over
+      // Auto-reload when a new SW becomes active
       let refreshing = false;
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (refreshing) return;
@@ -65,6 +71,18 @@ function setDisabled(el, disabled) {
 }
 
 // ===============================
+// FETCH HELPERS
+// ===============================
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, { cache: "no-store", ...options });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText} ${txt}`.trim());
+  }
+  return res.json();
+}
+
+// ===============================
 // YEAR DROPDOWN
 // ===============================
 function loadYears() {
@@ -84,19 +102,7 @@ function loadYears() {
 }
 
 // ===============================
-// FETCH HELPERS
-// ===============================
-async function fetchJson(url, options = {}) {
-  const res = await fetch(url, { cache: "no-store", ...options });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText} ${txt}`.trim());
-  }
-  return res.json();
-}
-
-// ===============================
-// MAKE/MODEL
+// MAKES / MODELS
 // ===============================
 async function loadMakes() {
   if (!makeEl) return;
@@ -166,32 +172,142 @@ if (makeEl) {
 }
 
 // ===============================
-// SERVICES (stable fallback list)
+// SERVICES CATALOG (Category -> Service)
 // ===============================
-const FALLBACK_SERVICES = [
-  "Oil Change",
-  "Brake Pads (Front)",
-  "Brake Pads (Rear)",
-  "Spark Plugs",
-  "Battery Replacement",
-  "Alternator Replacement",
-  "Starter Replacement",
-  "Diagnostic",
-];
+let categoriesCache = [];          // [{key,name}]
+let servicesByCategory = new Map(); // key -> services[]
+let selectedService = null;         // {code,name,labor_hours_min,labor_hours_max}
 
-function loadServices() {
-  if (categoryEl) {
-    categoryEl.innerHTML = `<option value="">General</option>`;
+function midpoint(min, max) {
+  const mn = Number(min);
+  const mx = Number(max);
+  if (!Number.isFinite(mn) || !Number.isFinite(mx)) return 0;
+  if (mx <= 0) return 0;
+  if (mn < 0) return 0;
+  if (mx < mn) return mn;
+  return (mn + mx) / 2;
+}
+
+function setLaborHoursFromService(svc) {
+  if (!laborHoursEl) return;
+  if (!svc) return;
+
+  const mid = midpoint(svc.labor_hours_min, svc.labor_hours_max);
+  // Only auto-fill if user hasn't typed a custom number (or it's 0)
+  const current = parseFloat(laborHoursEl.value || "0") || 0;
+  if (current <= 0 && mid > 0) {
+    laborHoursEl.value = String(Math.round(mid * 10) / 10);
   }
-  if (serviceEl) {
-    serviceEl.innerHTML = `<option value="">Select Service</option>`;
-    for (const s of FALLBACK_SERVICES) {
-      const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = s;
-      serviceEl.appendChild(opt);
+}
+
+function renderCategories(categories) {
+  if (!categoryEl) return;
+  categoryEl.innerHTML = `<option value="">Select Category</option>`;
+
+  for (const c of categories) {
+    const opt = document.createElement("option");
+    opt.value = c.key;
+    opt.textContent = c.name || c.key;
+    categoryEl.appendChild(opt);
+  }
+}
+
+function renderServices(services) {
+  if (!serviceEl) return;
+
+  serviceEl.innerHTML = `<option value="">Select Service</option>`;
+  selectedService = null;
+
+  for (const s of services) {
+    const opt = document.createElement("option");
+    opt.value = s.code;                 // IMPORTANT: use service code
+    opt.textContent = s.name || s.code;  // show name
+    opt.dataset.name = s.name || s.code;
+    serviceEl.appendChild(opt);
+  }
+}
+
+async function loadCategories() {
+  if (!categoryEl || !serviceEl) return;
+
+  try {
+    setStatus("Loading service catalog...");
+    setDisabled(categoryEl, true);
+    setDisabled(serviceEl, true);
+
+    const cats = await fetchJson("/api/categories");
+    categoriesCache = Array.isArray(cats) ? cats : [];
+
+    renderCategories(categoriesCache);
+    renderServices([]);
+
+    setStatus("");
+  } catch (err) {
+    console.error(err);
+    setStatus("Could not load service categories. Check services_catalog.json + app.py.", "error");
+
+    // fallback: empty but not broken
+    if (categoryEl) categoryEl.innerHTML = `<option value="">General</option>`;
+    if (serviceEl) serviceEl.innerHTML = `<option value="">Select Service</option>`;
+  } finally {
+    setDisabled(categoryEl, false);
+    setDisabled(serviceEl, false);
+  }
+}
+
+async function loadServicesForCategory(categoryKey) {
+  if (!serviceEl) return;
+
+  try {
+    if (!categoryKey) {
+      renderServices([]);
+      return;
     }
+
+    setStatus("Loading services...");
+    setDisabled(serviceEl, true);
+
+    if (servicesByCategory.has(categoryKey)) {
+      renderServices(servicesByCategory.get(categoryKey));
+      setStatus("");
+      return;
+    }
+
+    const services = await fetchJson(`/api/services/${encodeURIComponent(categoryKey)}`);
+    const list = Array.isArray(services) ? services : [];
+    servicesByCategory.set(categoryKey, list);
+
+    renderServices(list);
+    setStatus("");
+  } catch (err) {
+    console.error(err);
+    setStatus("Could not load services for that category.", "error");
+    renderServices([]);
+  } finally {
+    setDisabled(serviceEl, false);
   }
+}
+
+if (categoryEl) {
+  categoryEl.addEventListener("change", (e) => {
+    const key = e.target.value;
+    // Reset any previous manual labor hours if you want:
+    // if (laborHoursEl) laborHoursEl.value = "0";
+    loadServicesForCategory(key);
+  });
+}
+
+if (serviceEl) {
+  serviceEl.addEventListener("change", () => {
+    const catKey = categoryEl?.value || "";
+    const list = servicesByCategory.get(catKey) || [];
+    const code = serviceEl.value;
+
+    selectedService = list.find((s) => s.code === code) || null;
+
+    // Auto-fill labor hours midpoint when selecting a service
+    if (selectedService) setLaborHoursFromService(selectedService);
+  });
 }
 
 // ===============================
@@ -200,7 +316,6 @@ function loadServices() {
 let sigCtx = null;
 let sigDrawing = false;
 let sigHasInk = false;
-let sigLast = null;
 
 function setupCanvasScale() {
   if (!sigCanvas) return;
@@ -208,7 +323,7 @@ function setupCanvasScale() {
   const rect = sigCanvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
 
-  // Save existing drawing (if any) before resize
+  // Save existing drawing before resize (best effort)
   const prev = sigHasInk ? sigCanvas.toDataURL("image/png") : null;
 
   sigCanvas.width = Math.floor(rect.width * dpr);
@@ -219,12 +334,9 @@ function setupCanvasScale() {
   sigCtx.lineWidth = 2;
   sigCtx.lineCap = "round";
 
-  // Restore drawing after resize (best effort)
   if (prev) {
     const img = new Image();
-    img.onload = () => {
-      sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
-    };
+    img.onload = () => sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
     img.src = prev;
   }
 }
@@ -240,27 +352,23 @@ function pointFromEvent(evt) {
 function sigStart(evt) {
   if (!sigCtx) return;
   sigDrawing = true;
-  sigLast = pointFromEvent(evt);
+  const p = pointFromEvent(evt);
   sigCtx.beginPath();
-  sigCtx.moveTo(sigLast.x, sigLast.y);
+  sigCtx.moveTo(p.x, p.y);
   evt.preventDefault?.();
 }
 
 function sigMove(evt) {
   if (!sigDrawing || !sigCtx) return;
-
   const p = pointFromEvent(evt);
   sigCtx.lineTo(p.x, p.y);
   sigCtx.stroke();
-
-  sigLast = p;
   sigHasInk = true;
   evt.preventDefault?.();
 }
 
 function sigEnd() {
   sigDrawing = false;
-  sigLast = null;
 }
 
 function clearSignature() {
@@ -277,7 +385,6 @@ function getSignatureDataUrl() {
 
 function initSignature() {
   if (!sigCanvas) return;
-
   setupCanvasScale();
   window.addEventListener("resize", setupCanvasScale);
 
@@ -304,11 +411,13 @@ function clearFields() {
   if (modelEl) modelEl.innerHTML = `<option value="">Select Model</option>`;
 
   if (categoryEl) categoryEl.value = "";
-  if (serviceEl) serviceEl.value = "";
+  if (serviceEl) serviceEl.innerHTML = `<option value="">Select Service</option>`;
+
+  selectedService = null;
 
   if (laborHoursEl) laborHoursEl.value = "0";
   if (partsPriceEl) partsPriceEl.value = "0";
-  if (laborRateEl) laborRateEl.value = "90";
+  if (laborRateEl) laborRateEl.value = ""; // let backend default if blank
   if (notesEl) notesEl.value = "";
 
   if (customerNameEl) customerNameEl.value = "";
@@ -329,23 +438,36 @@ function num(el, fallback = 0) {
 }
 
 function buildPayload() {
+  const catKey = categoryEl?.value || "";
+  const svcCode = serviceEl?.value || "";
+  const svcName = selectedService?.name || (serviceEl?.selectedOptions?.[0]?.textContent || "").trim();
+
+  // If user typed a custom labor rate, send it; else let backend use default_labor_rate
+  const lrRaw = (laborRateEl?.value ?? "").trim();
+  const laborRate = lrRaw === "" ? null : num(laborRateEl, 0);
+
   return {
     year: parseInt(yearEl?.value || "", 10),
     make: (makeEl?.value || "").trim(),
     model: (modelEl?.value || "").trim(),
-    category: (categoryEl?.value || "").trim(),
-    service: (serviceEl?.value || "").trim(),
+
+    category: catKey || null,
+
+    // recommended
+    serviceCode: svcCode || null,
+
+    // fallback for display / compatibility
+    service: svcName || null,
 
     laborHours: num(laborHoursEl, 0),
     partsPrice: num(partsPriceEl, 0),
-    laborRate: num(laborRateEl, 90),
+    laborRate, // null means backend default
 
-    notes: (notesEl?.value || "").trim(),
-    customerName: (customerNameEl?.value || "").trim(),
-    customerPhone: (customerPhoneEl?.value || "").trim(),
+    notes: (notesEl?.value || "").trim() || null,
+    customerName: (customerNameEl?.value || "").trim() || null,
+    customerPhone: (customerPhoneEl?.value || "").trim() || null,
 
-    signatureDataUrl: getSignatureDataUrl(),
-    // zip optional if you later add it to UI
+    signatureDataUrl: getSignatureDataUrl()
   };
 }
 
@@ -353,10 +475,10 @@ function validatePayload(p) {
   if (!p.year || Number.isNaN(p.year)) return "Select a year.";
   if (!p.make) return "Select a make.";
   if (!p.model) return "Select a model.";
-  if (!p.service) return "Select a service.";
+  if (!p.serviceCode && !p.service) return "Select a service.";
   if (p.laborHours < 0) return "Labor hours must be 0 or greater.";
   if (p.partsPrice < 0) return "Parts price must be 0 or greater.";
-  if (p.laborRate < 0) return "Labor rate must be 0 or greater.";
+  if (p.laborRate !== null && p.laborRate < 0) return "Labor rate must be 0 or greater.";
   return null;
 }
 
@@ -376,7 +498,7 @@ async function createEstimate() {
     const res = await fetch("/estimate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
@@ -413,7 +535,7 @@ async function downloadPdf() {
     const res = await fetch("/estimate/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
@@ -449,8 +571,10 @@ if (pdfBtn) pdfBtn.addEventListener("click", downloadPdf);
 // ===============================
 document.addEventListener("DOMContentLoaded", async () => {
   loadYears();
-  loadServices();
   initSignature();
+
   await loadMakes();
+  await loadCategories();
+
   setStatus("");
 });
