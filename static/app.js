@@ -1,26 +1,17 @@
-// app.js — populates Year/Make/Model from GET /catalog
-
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("app.js loaded ✅");
 
-  // ---- Grab elements (these IDs must exist in your HTML) ----
   const yearEl = document.getElementById("year");
   const makeEl = document.getElementById("make");
   const modelEl = document.getElementById("model");
 
   if (!yearEl || !makeEl || !modelEl) {
-    console.error("Missing required select IDs. Need #year, #make, #model", {
-      yearEl,
-      makeEl,
-      modelEl,
-    });
+    console.error("Missing select IDs. Need #year, #make, #model", { yearEl, makeEl, modelEl });
     return;
   }
 
-  // ---- Helpers ----
   const setOptions = (select, items, placeholder) => {
     select.innerHTML = "";
-
     const ph = document.createElement("option");
     ph.value = "";
     ph.textContent = placeholder;
@@ -34,33 +25,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   };
 
+  const isYearKey = (k) => /^\d{4}$/.test(String(k)); // "2019"
+
   const normalizeModels = (modelsRaw) => {
-    // modelsRaw can be:
-    // - ["Camry","Corolla"]
-    // - {"Camry": {...}, "Corolla": {...}}
-    // - {"models": ["Camry","Corolla"]}
     if (!modelsRaw) return [];
-
     if (Array.isArray(modelsRaw)) return modelsRaw;
-
     if (typeof modelsRaw === "object") {
       if (Array.isArray(modelsRaw.models)) return modelsRaw.models;
       return Object.keys(modelsRaw);
     }
-
     return [];
   };
 
-  const sortYearsDesc = (years) =>
-    years.sort((a, b) => Number(b) - Number(a));
-
   // ---- Load catalog ----
-  let catalog = {};
+  let catalog;
   try {
     const res = await fetch("/catalog", { cache: "no-store" });
     if (!res.ok) throw new Error(`GET /catalog failed: ${res.status}`);
     catalog = await res.json();
-
     console.log("Catalog loaded ✅", catalog);
   } catch (err) {
     console.error("Failed to load catalog ❌", err);
@@ -70,8 +52,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // ---- Populate Years from catalog keys ----
-  const years = sortYearsDesc(Object.keys(catalog || {}));
+  // ---- Find vehicle tree inside catalog ----
+  // If catalog has a "vehicles" key, use that. Otherwise assume catalog itself is the vehicle tree.
+  const vehicleTree = (catalog && typeof catalog === "object" && catalog.vehicles && typeof catalog.vehicles === "object")
+    ? catalog.vehicles
+    : catalog;
+
+  // ---- Years (only 4-digit keys) ----
+  const years = Object.keys(vehicleTree || {})
+    .filter(isYearKey)
+    .sort((a, b) => Number(b) - Number(a));
+
+  console.log("Years detected:", years);
+
   setOptions(yearEl, years, "Select year");
   setOptions(makeEl, [], "Select make");
   setOptions(modelEl, [], "Select model");
@@ -79,21 +72,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---- Year -> Makes ----
   yearEl.addEventListener("change", () => {
     const year = yearEl.value;
-
     setOptions(makeEl, [], "Select make");
     setOptions(modelEl, [], "Select model");
 
     if (!year) return;
 
-    const yearData = catalog[year];
-    if (!yearData || typeof yearData !== "object") {
-      console.warn("No catalog data for year:", year);
-      return;
-    }
+    const yearData = vehicleTree[year];
+    if (!yearData || typeof yearData !== "object") return;
 
     const makes = Object.keys(yearData).sort();
     console.log("Makes for year", year, "=>", makes);
-
     setOptions(makeEl, makes, "Select make");
   });
 
@@ -101,19 +89,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   makeEl.addEventListener("change", () => {
     const year = yearEl.value;
     const make = makeEl.value;
-
     setOptions(modelEl, [], "Select model");
 
     if (!year || !make) return;
 
-    const yearData = catalog[year];
+    const yearData = vehicleTree[year];
     if (!yearData || typeof yearData !== "object") return;
 
     const modelsRaw = yearData[make];
     const models = normalizeModels(modelsRaw).sort();
 
     console.log("Models for", { year, make }, "=>", models);
-
     setOptions(modelEl, models, "Select model");
   });
 });
