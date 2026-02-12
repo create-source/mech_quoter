@@ -252,13 +252,14 @@ def get_makes() -> List[str]:
 
 
 @app.get("/api/models/{make}")
-def get_models(make: str) -> List[str]:
-    mm = load_make_models()
-    key = (make or "").strip().upper()
-    if key not in mm:
-        raise HTTPException(status_code=404, detail=f"Make '{make}' not found")
-    return sorted(mm[key])
+async def get_models(make: str) -> List[str]:
+    make_upper = (make or "").strip().upper()
 
+    # Keep UI restricted to your POPULAR_MAKES list
+    if make_upper not in POPULAR_MAKES:
+        raise HTTPException(status_code=404, detail=f"Make '{make}' not supported")
+
+    return await fetch_models_from_vpic(make_upper)
 
 # ===============================
 # SERVICES API
@@ -354,18 +355,18 @@ def estimate(req: EstimateRequest) -> EstimateResponse:
         }
     )
 
-
 @app.post("/estimate/pdf")
 def estimate_pdf(req: EstimateRequest) -> Response:
     est = estimate(req)
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
-    _, height = letter
+    width, height = letter
 
     y = height - 72
     c.setTitle("Repair Estimate")
 
+    # Header
     c.setFont("Helvetica-Bold", 16)
     c.drawString(72, y, "Repair Estimate")
     y -= 24
@@ -374,6 +375,7 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     c.drawString(72, y, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     y -= 24
 
+    # Vehicle
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Vehicle")
     y -= 16
@@ -381,6 +383,7 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     c.drawString(72, y, f"{req.year} {req.make} {req.model}")
     y -= 18
 
+    # Service
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Service")
     y -= 16
@@ -388,6 +391,7 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     c.drawString(72, y, est.service_name)
     y -= 18
 
+    # Total
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Estimated Total")
     y -= 16
@@ -395,6 +399,7 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     c.drawString(72, y, f"${est.estimate:,} {est.currency}")
     y -= 18
 
+    # Breakdown
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Breakdown")
     y -= 16
@@ -403,7 +408,77 @@ def estimate_pdf(req: EstimateRequest) -> Response:
         c.drawString(72, y, f"{k}: {v:.2f}")
         y -= 14
 
-    y -= 8
+    y -= 10
+
+    # Customer info
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Customer")
+    y -= 16
+    c.setFont("Helvetica", 11)
+    if req.customerName:
+        c.drawString(72, y, f"Name: {req.customerName}")
+        y -= 14
+    if req.customerPhone:
+        c.drawString(72, y, f"Phone: {req.customerPhone}")
+        y -= 14
+    if req.notes:
+        c.drawString(72, y, "Notes:")
+        y -= 14
+        # simple wrap
+        note = req.notes.strip()
+        for line in wrap_text(note, max_chars=95):
+            c.drawString(72, y, line)
+            y -= 12
+        y -= 4
+
+    # Signature block
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Signature")
+    y -= 12
+
+    sig_box_w = 240
+    sig_box_h = 90
+    sig_x = 72
+    sig_y = y - sig_box_h
+
+    # Draw signature box
+    c.setLineWidth(1)
+    c.rect(sig_x, sig_y, sig_box_w, sig_box_h)
+
+    # If signature image exists, decode and draw it
+    if req.signatureDataUrl:
+        try:
+            import base64
+            from reportlab.lib.utils import ImageReader
+
+            data_url = req.signatureDataUrl
+            if "," in data_url:
+                _, b64 = data_url.split(",", 1)
+            else:
+                b64 = data_url
+
+            img_bytes = base64.b64decode(b64)
+            img = ImageReader(io.BytesIO(img_bytes))
+
+            # Fit image into box with padding
+            pad = 6
+            c.drawImage(
+                img,
+                sig_x + pad,
+                sig_y + pad,
+                width=sig_box_w - pad * 2,
+                height=sig_box_h - pad * 2,
+                preserveAspectRatio=True,
+                anchor="c",
+                mask="auto",
+            )
+        except Exception as e:
+            # If decode fails, still produce PDF
+            c.setFont("Helvetica-Oblique", 9)
+            c.drawString(sig_x + 8, sig_y + sig_box_h - 14, "Signature could not be rendered")
+
+    y = sig_y - 24
+
     c.setFont("Helvetica-Oblique", 9)
     c.drawString(72, y, "Note: This is an estimate. Final pricing may vary after inspection.")
 
@@ -417,6 +492,25 @@ def estimate_pdf(req: EstimateRequest) -> Response:
         headers={"Content-Disposition": "inline; filename=estimate.pdf"},
     )
 
+
+def wrap_text(text: str, max_chars: int = 95) -> List[str]:
+    # simple wrapping without extra deps
+    words = text.split()
+    lines: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+    for w in words:
+        add_len = len(w) + (1 if cur else 0)
+        if cur_len + add_len > max_chars:
+            lines.append(" ".join(cur))
+            cur = [w]
+            cur_len = len(w)
+        else:
+            cur.append(w)
+            cur_len += add_len
+    if cur:
+        lines.append(" ".join(cur))
+    return lines
 
 if __name__ == "__main__":
     import uvicorn
