@@ -3,14 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Quick repair cost estimator with PDF export." />
+  <meta name="description" content="Repair estimator with PDF export." />
   <title>Repair Estimator</title>
 
-  <!-- Styles -->
-  <link rel="stylesheet" href="/static/style.css?v=4" />
+  <link rel="stylesheet" href="/static/style.css?v=1" />
 
   <!-- PWA -->
-  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0b1220" />
 
   <!-- iOS home-screen support -->
@@ -35,17 +34,15 @@
       <div class="grid3">
         <div>
           <label for="year">Year</label>
-          <select id="year" name="year" autocomplete="off"></select>
+          <select id="year" name="year"></select>
         </div>
-
         <div>
           <label for="make">Make (popular)</label>
-          <select id="make" name="make" autocomplete="off"></select>
+          <select id="make" name="make"></select>
         </div>
-
         <div>
           <label for="model">Model</label>
-          <select id="model" name="model" autocomplete="off"></select>
+          <select id="model" name="model"></select>
         </div>
       </div>
     </section>
@@ -57,12 +54,11 @@
       <div class="grid2">
         <div>
           <label for="category">Category</label>
-          <select id="category" name="category" autocomplete="off"></select>
+          <select id="category" name="category"></select>
         </div>
-
         <div>
           <label for="service">Service</label>
-          <select id="service" name="service" autocomplete="off"></select>
+          <select id="service" name="service"></select>
         </div>
       </div>
 
@@ -71,12 +67,10 @@
           <label for="laborHours">Labor Hours</label>
           <input id="laborHours" name="laborHours" type="number" step="0.1" value="0" inputmode="decimal" />
         </div>
-
         <div>
           <label for="partsPrice">Parts Price (optional)</label>
           <input id="partsPrice" name="partsPrice" type="number" step="0.01" value="0" inputmode="decimal" />
         </div>
-
         <div>
           <label for="laborRate">Labor Rate ($/hr)</label>
           <input id="laborRate" name="laborRate" type="number" step="1" value="90" inputmode="numeric" />
@@ -88,7 +82,7 @@
         <textarea id="notes" name="notes" rows="3" placeholder="Optional notes..."></textarea>
       </div>
 
-      <div class="actions">
+      <div class="actions" style="margin-top: 12px;">
         <button id="estimateBtn" type="button">Create Estimate</button>
         <button id="pdfBtn" type="button">Download PDF</button>
       </div>
@@ -111,7 +105,6 @@
           <label for="customerName">Customer Name</label>
           <input id="customerName" name="customerName" type="text" placeholder="Customer name" autocomplete="name" />
         </div>
-
         <div>
           <label for="customerPhone">Customer Phone (optional)</label>
           <input id="customerPhone" name="customerPhone" type="tel" placeholder="(555) 555-5555" autocomplete="tel" />
@@ -120,14 +113,13 @@
     </section>
   </div>
 
-  <!-- App JS -->
-  <script defer src="/static/app.js?v=4"></script>
+  <script defer src="/static/app.js?v=1"></script>
 
-  <!-- Service Worker (must match your file location) -->
+  <!-- Register SW at ROOT for best scope -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+        navigator.serviceWorker.register("/sw.js").catch(console.error);
       });
     }
   </script>
