@@ -1,4 +1,6 @@
 from __future__ import annotations
+import time
+import httpx
 
 import io
 import json
@@ -419,3 +421,82 @@ def estimate_pdf(req: EstimateRequest) -> Response:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+# ===============================
+# NHTSA vPIC (Models API)
+# ===============================
+VPIC_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
+VPIC_TIMEOUT_S = 10.0
+
+# Cache models per make to avoid hammering NHTSA
+# make_upper -> (expires_epoch, models_list)
+_models_cache: Dict[str, tuple[float, List[str]]] = {}
+MODELS_TTL_SECONDS = 60 * 60 * 24  # 24h cache
+
+def _cache_get(make_upper: str) -> Optional[List[str]]:
+    item = _models_cache.get(make_upper)
+    if not item:
+        return None
+    expires, models = item
+    if time.time() > expires:
+        _models_cache.pop(make_upper, None)
+        return None
+    return models
+
+def _cache_set(make_upper: str, models: List[str]) -> None:
+    _models_cache[make_upper] = (time.time() + MODELS_TTL_SECONDS, models)
+
+async def fetch_models_from_vpic(make: str) -> List[str]:
+    """
+    Fetch all models for a make from NHTSA vPIC.
+    Endpoint: /GetModelsForMake/{make}?format=json
+    """
+    make_clean = (make or "").strip()
+    if not make_clean:
+        return []
+
+    make_upper = make_clean.upper()
+    cached = _cache_get(make_upper)
+    if cached is not None:
+        return cached
+
+    url = f"{VPIC_BASE}/GetModelsForMake/{httpx.utils.quote(make_clean, safe='')}"
+    params = {"format": "json"}
+
+    # retry 2x (quick + safe)
+    last_err: Optional[Exception] = None
+    for _ in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=VPIC_TIMEOUT_S, follow_redirects=True) as client:
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                data = r.json()
+
+            results = data.get("Results", []) if isinstance(data, dict) else []
+            models = []
+            seen = set()
+
+            for item in results:
+                name = (item.get("Model_Name") or "").strip()
+                if not name:
+                    continue
+                key = name.upper()
+                if key in seen:
+                    continue
+                seen.add(key)
+                models.append(name)
+
+            models.sort(key=lambda s: s.upper())
+            _cache_set(make_upper, models)
+            return models
+
+        except Exception as e:
+            last_err = e
+
+    # If NHTSA is down, fail gracefully with any stale cache (if present)
+    stale = _models_cache.get(make_upper)
+    if stale:
+        return stale[1]
+
+    raise HTTPException(status_code=502, detail=f"NHTSA vPIC unavailable: {last_err}")
+
