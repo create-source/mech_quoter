@@ -180,3 +180,17 @@ function onServiceChange() {
   const mid = (min + max) / 2;
   $("laborHours").value = mid.toFixed(1);
 }
+
+// Add this INSIDE your existing DOMContentLoaded handler, before init():
+window.addEventListener("DOMContentLoaded", () => {
+  // PWA service worker
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+  }
+
+  init().catch((e) => {
+    console.error(e);
+    const box = $("statusBox");
+    if (box) box.textContent = `UI init failed: ${e.message}`;
+  });
+});
