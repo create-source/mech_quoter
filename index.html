@@ -79,6 +79,27 @@
       <button id="estimateBtn" type="button">Create Estimate</button>
       <button id="pdfBtn" type="button">Download PDF</button>
 
+      <div class="card">
+        <div class="signature-header">
+          <h2>Customer Signature</h2>
+          <button id="sigClearBtn" type="button">Clear signature</button>
+        </div>
+      
+        <canvas id="sigCanvas" class="sig-canvas"></canvas>
+        <div class="sig-hint">Sign with finger or mouse. Signature will be included in PDF.</div>
+      
+        <div class="grid2">
+          <div>
+            <label for="customerName">Customer Name</label>
+            <input id="customerName" type="text" placeholder="Customer name" />
+          </div>
+          <div>
+            <label for="customerPhone">Customer Phone (optional)</label>
+            <input id="customerPhone" type="text" placeholder="(555) 555-5555" />
+          </div>
+        </div>
+      </div>
+
       <div id="statusBox" class="status"></div>
     </div>
   </div>
