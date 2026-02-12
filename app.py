@@ -16,33 +16,28 @@ import io
 from datetime import datetime
 
 
-# -----------------------------
-# Paths
-# -----------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 
 
-# -----------------------------
-# App
-# -----------------------------
-app = FastAPI(title="Auto Mechanic Estimate", version="1.0.0")
+app = FastAPI(title="Repair Estimator", version="1.0.0")
 
+# If you serve everything from the same domain, you can tighten this later.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve /static/*
+# Static assets live at /static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # -----------------------------
-# Data (replace with DB later)
+# Demo Data (replace with DB later)
 # -----------------------------
 MAKE_MODEL: Dict[str, List[str]] = {
     "Toyota": ["Camry", "Corolla", "Tacoma", "Tundra", "Sequoia", "RAV4", "Highlander"],
@@ -64,9 +59,6 @@ SERVICE_BASE_PRICE: Dict[str, int] = {
 }
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
 def zip_multiplier(zip_code: str) -> float:
     z = (zip_code or "").strip()[:5]
     if len(z) == 5 and z.isdigit():
@@ -86,15 +78,29 @@ def year_multiplier(year: int) -> float:
 
 
 # -----------------------------
-# Models
+# Request/Response Models
 # -----------------------------
 class EstimateRequest(BaseModel):
+    # Keep these aligned with your app.js payload
+    year: int = Field(..., ge=1970, le=2035)
     make: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
-    year: int = Field(..., ge=1970, le=2035)
-    # Make ZIP optional so your UI doesn't 422 if zip isn't present yet
-    zip: Optional[str] = Field(default="00000", min_length=5, max_length=10)
+    category: Optional[str] = None
     service: str = Field(..., min_length=1)
+
+    laborHours: float = Field(0, ge=0)
+    partsPrice: float = Field(0, ge=0)
+    laborRate: float = Field(90, ge=0)
+
+    notes: Optional[str] = None
+    customerName: Optional[str] = None
+    customerPhone: Optional[str] = None
+
+    # Optional ZIP (if you later add it to UI)
+    zip: Optional[str] = Field(default="00000", min_length=5, max_length=10)
+
+    # Optional base64 signature (if your app.js sends it)
+    signatureDataUrl: Optional[str] = None
 
 
 class EstimateResponse(BaseModel):
@@ -113,7 +119,7 @@ def home() -> HTMLResponse:
     return HTMLResponse(INDEX_HTML.read_text(encoding="utf-8"))
 
 
-# Serve manifest at a clean root URL (so your HTML can use /manifest.webmanifest)
+# Serve manifest at ROOT for best PWA behavior (file remains in /static)
 @app.get("/manifest.webmanifest")
 def manifest() -> FileResponse:
     p = STATIC_DIR / "manifest.webmanifest"
@@ -122,14 +128,18 @@ def manifest() -> FileResponse:
     return FileResponse(str(p), media_type="application/manifest+json")
 
 
-# OPTIONAL: serve service worker at root too, if your index.html registers "/sw.js"
-# If your index.html registers "/static/sw.js", you can delete this route.
+# Serve service worker at ROOT for best scope (file remains in /static)
 @app.get("/sw.js")
 def service_worker() -> FileResponse:
     p = STATIC_DIR / "sw.js"
     if not p.exists():
         raise HTTPException(500, "Missing static/sw.js")
-    return FileResponse(str(p), media_type="application/javascript")
+    # Avoid aggressive caching of SW itself so updates apply reliably
+    return FileResponse(
+        str(p),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/health")
@@ -137,6 +147,7 @@ def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+# Make/Model endpoints (your app.js should call these)
 @app.get("/api/makes")
 def get_makes() -> List[str]:
     return sorted(MAKE_MODEL.keys())
@@ -153,25 +164,32 @@ def get_models(make: str) -> List[str]:
 def estimate(req: EstimateRequest) -> EstimateResponse:
     if req.make not in MAKE_MODEL:
         raise HTTPException(status_code=400, detail="Invalid make")
-
     if req.model not in MAKE_MODEL[req.make]:
         raise HTTPException(status_code=400, detail="Invalid model for selected make")
 
-    if req.service not in SERVICE_BASE_PRICE:
+    base_service = SERVICE_BASE_PRICE.get(req.service, 0)
+    if base_service <= 0:
+        # If you have categories/services from services_catalog.json, validate here later
         raise HTTPException(status_code=400, detail="Invalid service selection")
 
-    zip5 = (req.zip or "00000").strip()[:5]
-    base = float(SERVICE_BASE_PRICE[req.service])
-    z = zip_multiplier(zip5)
+    # Simple total:
+    # service base + (laborHours * laborRate) + partsPrice, modified by year/zip multipliers
+    z = zip_multiplier(req.zip or "00000")
     y = year_multiplier(req.year)
 
-    subtotal = base * z * y
+    labor = float(req.laborHours or 0) * float(req.laborRate or 0)
+    parts = float(req.partsPrice or 0)
+    base = float(base_service)
+
+    subtotal = (base + labor + parts) * z * y
     final_price = int(round(subtotal))
 
     return EstimateResponse(
         estimate=final_price,
         breakdown={
-            "base": base,
+            "base_service": base,
+            "labor": labor,
+            "parts": parts,
             "zip_multiplier": z,
             "year_multiplier": y,
             "subtotal": subtotal,
@@ -188,10 +206,10 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     _, height = letter
 
     y = height - 72
-    c.setTitle("Auto Mechanic Estimate")
+    c.setTitle("Repair Estimate")
 
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(72, y, "Auto Mechanic Estimate")
+    c.drawString(72, y, "Repair Estimate")
     y -= 24
 
     c.setFont("Helvetica", 11)
@@ -203,29 +221,31 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     y -= 16
     c.setFont("Helvetica", 11)
     c.drawString(72, y, f"{req.year} {req.make} {req.model}")
-    y -= 24
+    y -= 18
 
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Service")
     y -= 16
     c.setFont("Helvetica", 11)
     c.drawString(72, y, req.service)
-    y -= 24
-
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(72, y, "Location")
-    y -= 16
-    c.setFont("Helvetica", 11)
-    c.drawString(72, y, f"ZIP: {req.zip or '00000'}")
-    y -= 24
+    y -= 18
 
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Estimate")
     y -= 16
     c.setFont("Helvetica", 12)
     c.drawString(72, y, f"${est.estimate:,} {est.currency}")
-    y -= 24
+    y -= 18
 
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Breakdown")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    for k, v in est.breakdown.items():
+        c.drawString(72, y, f"{k}: {v:.2f}")
+        y -= 14
+
+    y -= 8
     c.setFont("Helvetica-Oblique", 9)
     c.drawString(72, y, "Note: This is an estimate. Final pricing may vary after inspection.")
 
