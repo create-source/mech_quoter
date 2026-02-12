@@ -108,11 +108,12 @@ async function init() {
   const estimateBtn = $("estimateBtn");
   const pdfBtn = $("pdfBtn");
   const statusBox = $("statusBox");
+  const clearBtn = $("clearBtn");
 
   const required = [
     yearSel, makeSel, modelSel, categorySel, serviceSel,
     laborHoursEl, partsPriceEl, laborRateEl, notesEl,
-    estimateBtn, pdfBtn, statusBox
+    estimateBtn, pdfBtn, statusBox, clearBtn
   ];
   if (required.some((x) => !x)) {
     throw new Error("Missing required elements (check IDs in index.html).");
@@ -186,6 +187,36 @@ async function init() {
       statusBox.textContent = `PDF failed: ${e.message}`;
     }
   });
+
+  // Clear button
+  clearBtn.addEventListener("click", () => {
+  
+      // Reset vehicle dropdowns
+      yearSel.value = "";
+      setOptions(makeSel, [], "Select make");
+      setOptions(modelSel, [], "Select model");
+    
+      // Reset category + service
+      categorySel.value = "";
+      setOptions(serviceSel, [], "Select service");
+    
+      // Reset inputs
+      laborHoursEl.value = "0";
+      partsPriceEl.value = "0";
+      notesEl.value = "";
+    
+      // Reset labor rate to default
+      if (catalog && typeof catalog.labor_rate !== "undefined") {
+        laborRateEl.value = Number(catalog.labor_rate || 90);
+      }
+    
+      // Clear output box
+      statusBox.textContent = "";
+    
+      // Optional smooth scroll (nice on mobile)
+      window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
 
   // Prime state
   setOptions(makeSel, [], "Select make");
