@@ -89,3 +89,15 @@ button:hover{filter:brightness(1.05)}
   .grid3{grid-template-columns:1fr}
   .grid2{grid-template-columns:1fr}
 }
+
+.btnRow{
+  display:flex;
+  gap:12px;
+  margin-top:12px;
+  flex-wrap:wrap;
+}
+
+.btnSecondary{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14);
+}
