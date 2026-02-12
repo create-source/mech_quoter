@@ -1,40 +1,93 @@
-const CACHE_NAME = "mech-quoter-v1";
-const ASSETS = [
+const CACHE_VERSION = "auto-mechanic-v1";
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
+
+// Files that make up your app shell
+const APP_SHELL = [
   "/",
-  "/static/style.css?v=3",
-  "/static/app.js?v=3",
-  "/manifest.webmanifest",
-  "/static/icon-192.png"
+  "/static/index.html",
+  "/static/app.js",
+  "/static/styles.css",
+  "/manifest.json",
+  "/static/icons/icon-192.png",
+  "/static/icons/icon-512.png"
 ];
 
+// ===============================
+// INSTALL
+// ===============================
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  console.log("Service Worker installing...");
+
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then((cache) => {
+      return cache.addAll(APP_SHELL);
+    })
+  );
+
   self.skipWaiting();
 });
 
+// ===============================
+// ACTIVATE
+// ===============================
 self.addEventListener("activate", (event) => {
+  console.log("Service Worker activating...");
+
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+      Promise.all(
+        keys.map((key) => {
+          if (key !== STATIC_CACHE && key !== DYNAMIC_CACHE) {
+            return caches.delete(key);
+          }
+        })
+      )
     )
   );
+
   self.clients.claim();
 });
 
-// Network-first for API; cache-first for static
+// ===============================
+// FETCH
+// ===============================
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
 
-  // API calls (always try network first)
-  if (url.pathname.startsWith("/vehicle/") || url.pathname.startsWith("/catalog") || url.pathname.startsWith("/categories")) {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
+  // 🔹 API Calls → Network First
+  if (request.url.includes("/estimate") || request.url.includes("/api")) {
+    event.respondWith(networkFirst(request));
     return;
   }
 
-  // Static assets (cache-first)
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+  // 🔹 Everything else → Cache First
+  event.respondWith(cacheFirst(request));
 });
+
+// ===============================
+// STRATEGIES
+// ===============================
+
+// Cache First Strategy
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  return cached || fetch(request);
+}
+
+// Network First Strategy
+async function networkFirst(request) {
+  const cache = await caches.open(DYNAMIC_CACHE);
+
+  try {
+    const response = await fetch(request);
+    cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    return cached || new Response(
+      JSON.stringify({ error: "Offline" }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
