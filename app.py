@@ -44,15 +44,15 @@ def years():
 
 @app.get("/vehicle/makes")
 def vehicle_makes(year: int):
-    """
-    VPIC: GetMakesForVehicleModelYear/{year}
-    """
-    try:
-        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/{year}?format=json"
-        r = httpx.get(url, timeout=15)
-        if r.status_code != 200:
-            # fallback so UI doesn't die
-            return POPULAR_MAKES
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleModelYear/{year}?format=json"
+    r = httpx.get(url, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    results = data.get("Results", [])
+    makes = sorted({(m.get("MakeName") or "").upper().strip() for m in results if m.get("MakeName")})
+    makes = [m for m in makes if m in POPULAR_MAKES]
+    return makes
+
 
         data = r.json()
         results = data.get("Results", []) or []
@@ -74,15 +74,15 @@ def vehicle_makes(year: int):
 
 @app.get("/vehicle/models")
 def vehicle_models(year: int, make: str):
-    """
-    VPIC: GetModelsForMakeYear/make/{make}/modelyear/{year}
-    """
-    try:
-        make_u = (make or "").upper().strip()
-        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make_u}/modelyear/{year}?format=json"
-        r = httpx.get(url, timeout=15)
-        if r.status_code != 200:
-            return []
+    make = make.upper().strip()
+    url = f"https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/{make}/modelyear/{year}?format=json"
+    r = httpx.get(url, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    results = data.get("Results", [])
+    models = sorted({(m.get("Model_Name") or "").strip() for m in results if m.get("Model_Name")})
+    return models
+
 
         data = r.json()
         results = data.get("Results", []) or []
