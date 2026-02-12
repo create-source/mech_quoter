@@ -108,85 +108,102 @@ let servicesByCategory = new Map();
 function setupSignaturePad(canvas, clearBtn) {
   const ctx = canvas.getContext("2d");
   let drawing = false;
-  let lastX = 0, lastY = 0;
 
-  const resizeCanvasToDisplaySize = () => {
-    // Make canvas crisp on high-DPI screens (phones)
+  const pen = {
+    lineWidth: 2.5,
+    lineCap: "round",
+    lineJoin: "round",
+  };
+
+  function resize() {
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     const rect = canvas.getBoundingClientRect();
+
+    // Save current drawing before resize (optional but nice)
+    const prev = canvas.toDataURL();
+
     canvas.width = Math.round(rect.width * ratio);
     canvas.height = Math.round(rect.height * ratio);
+
+    // Draw in CSS pixels while backing store is scaled
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.lineWidth = pen.lineWidth;
+    ctx.lineCap = pen.lineCap;
+    ctx.lineJoin = pen.lineJoin;
 
-    // Nice pen settings
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-  };
+    // Restore previous image after resize (prevents signature from disappearing on rotate)
+    const img = new Image();
+    img.onload = () => {
+      // draw previous at CSS size
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+    };
+    img.src = prev;
+  }
 
-  const getPos = (e) => {
+  function getPos(e) {
     const rect = canvas.getBoundingClientRect();
-    const isTouch = e.touches && e.touches.length;
-    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    const t = e.touches && e.touches[0];
+    const clientX = t ? t.clientX : e.clientX;
+    const clientY = t ? t.clientY : e.clientY;
     return { x: clientX - rect.left, y: clientY - rect.top };
-  };
+  }
 
-  const start = (e) => {
+  function start(e) {
     e.preventDefault();
     drawing = true;
     const p = getPos(e);
-    lastX = p.x; lastY = p.y;
-  };
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
 
-  const move = (e) => {
+  function move(e) {
     if (!drawing) return;
     e.preventDefault();
     const p = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
-    lastX = p.x; lastY = p.y;
-  };
+  }
 
-  const end = (e) => {
+  function end(e) {
     if (!drawing) return;
     e.preventDefault();
     drawing = false;
-  };
+    ctx.closePath();
+  }
 
-  const clear = () => {
-    const rect = canvas.getBoundingClientRect();
-    ctx.clearRect(0, 0, rect.width, rect.height);
-  };
+  function clear() {
+    // Clear the *entire* backing canvas reliably (DPI-safe)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
 
-  // Events: mouse + touch
+  // Mouse
   canvas.addEventListener("mousedown", start);
   canvas.addEventListener("mousemove", move);
   window.addEventListener("mouseup", end);
 
+  // Touch (critical: passive false so preventDefault works)
   canvas.addEventListener("touchstart", start, { passive: false });
   canvas.addEventListener("touchmove", move, { passive: false });
   window.addEventListener("touchend", end, { passive: false });
 
-  // Resize on load + when screen changes
-  resizeCanvasToDisplaySize();
-  window.addEventListener("resize", () => resizeCanvasToDisplaySize());
-
   if (clearBtn) clearBtn.addEventListener("click", clear);
+
+  // Initial sizing + re-size on rotation
+  resize();
+  window.addEventListener("resize", resize);
 
   return {
     clear,
     getDataUrl: () => {
-      // If blank, return empty string (so PDF doesn’t show garbage)
-      // Quick blank check: compare to an empty canvas
+      // Blank check using backing store
       const tmp = document.createElement("canvas");
       tmp.width = canvas.width;
       tmp.height = canvas.height;
-      if (canvas.toDataURL() === tmp.toDataURL()) return "";
-      return canvas.toDataURL("image/png");
-    }
+      return canvas.toDataURL() === tmp.toDataURL() ? "" : canvas.toDataURL("image/png");
+    },
   };
 }
 
