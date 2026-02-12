@@ -175,6 +175,34 @@
         { "code": "charcoal_canister_replacement", "name": "Charcoal Canister Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.8 },
         { "code": "exhaust_leak_repair", "name": "Exhaust Leak Repair (minor)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
-    }
+    },
+    {
+      "key": "body_paint",
+      "name": "Body / Paint (Bumper-to-Bumper)",
+      "services": [
+        { "code": "rust_treatment_small", "name": "Rust Removal + Treatment (Small Area < 1 sq ft)", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
+        { "code": "rust_treatment_medium", "name": "Rust Removal + Treatment (Medium Area 1–4 sq ft)", "labor_hours_min": 5.0, "labor_hours_max": 10.0 },
+        { "code": "rust_treatment_large", "name": "Rust Removal + Treatment (Large Area 4–10 sq ft)", "labor_hours_min": 10.0, "labor_hours_max": 18.0 },
+    
+        { "code": "spot_prime_paint", "name": "Spot Prime + Paint (Blend, 1 Panel)", "labor_hours_min": 4.0, "labor_hours_max": 8.0 },
+        { "code": "panel_paint_single", "name": "Paint Refinish (Single Panel, Base/Clear)", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
+        { "code": "panel_paint_blend_adjacent", "name": "Blend Adjacent Panel (each)", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
+    
+        { "code": "roof_refinish", "name": "Roof Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 8.0, "labor_hours_max": 16.0 },
+        { "code": "hood_refinish", "name": "Hood Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
+        { "code": "trunk_refinish", "name": "Trunk / Liftgate Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
+    
+        { "code": "full_vehicle_scuff_shoot", "name": "Full Vehicle Scuff & Shoot (Minimal Bodywork)", "labor_hours_min": 30.0, "labor_hours_max": 60.0 },
+        { "code": "full_vehicle_prep_paint", "name": "Full Vehicle Prep + Paint (Good Condition Refinish)", "labor_hours_min": 50.0, "labor_hours_max": 100.0 },
+        { "code": "full_restoration_paint", "name": "Full Vehicle Bodywork + Paint (Rust/Repair Intensive)", "labor_hours_min": 90.0, "labor_hours_max": 200.0 },
+    
+        { "code": "masking_setup", "name": "Masking / Setup (Add-On)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
+        { "code": "color_sand_buff", "name": "Color Sand & Buff (Add-On)", "labor_hours_min": 4.0, "labor_hours_max": 12.0 },
+    
+        { "code": "bumper_refinish", "name": "Bumper Refinish (each)", "labor_hours_min": 3.0, "labor_hours_max": 7.0 },
+        { "code": "dent_repair_small", "name": "Dent Repair (Small, no paint)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
+        { "code": "dent_repair_med", "name": "Dent Repair (Medium, with filler/prep)", "labor_hours_min": 3.0, "labor_hours_max": 8.0 }
+      ]
+    }   
   ]
 }
