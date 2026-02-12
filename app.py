@@ -4,7 +4,7 @@ import io
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Any, Tuple
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +22,9 @@ from reportlab.pdfgen import canvas
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
-CATALOG_PATH = BASE_DIR / "services_catalog.json"
+
+MAKE_MODELS_PATH = BASE_DIR / "make_models.json"
+SERVICES_CATALOG_PATH = BASE_DIR / "services_catalog.json"
 
 
 # ===============================
@@ -34,89 +36,107 @@ POPULAR_MAKES: List[str] = [
     "TESLA", "VOLVO",
 ]
 
-# Base services (stable fallback; move into JSON later if you want)
-SERVICE_BASE_PRICE: Dict[str, int] = {
-    "Oil Change": 79,
-    "Brake Pads (Front)": 249,
-    "Brake Pads (Rear)": 239,
-    "Spark Plugs": 299,
-    "Battery Replacement": 219,
-    "Alternator Replacement": 699,
-    "Starter Replacement": 649,
-    "Diagnostic": 149,
-}
-
 
 # ===============================
 # APP
 # ===============================
 app = FastAPI(title="Repair Estimator", version="1.0.0")
 
-# If serving UI + API from same domain, you can remove CORS entirely.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten for production domain later
+    allow_origins=["*"],  # tighten later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve static assets: /static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ===============================
-# CATALOG LOADER (auto-reload on file change)
+# FILE CACHES (auto reload on mtime change)
 # ===============================
-_catalog_cache: Optional[Dict[str, List[str]]] = None
-_catalog_mtime: Optional[float] = None
+_make_models_cache: Optional[Dict[str, List[str]]] = None
+_make_models_mtime: Optional[float] = None
+
+_services_cache: Optional[Dict[str, Any]] = None
+_services_mtime: Optional[float] = None
 
 
-def _normalize_catalog(data: dict) -> Dict[str, List[str]]:
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON in {path.name}: {e}")
+
+
+def load_make_models() -> Dict[str, List[str]]:
+    global _make_models_cache, _make_models_mtime
+
+    if not MAKE_MODELS_PATH.exists():
+        raise HTTPException(status_code=500, detail="Missing make_models.json at project root.")
+
+    mtime = MAKE_MODELS_PATH.stat().st_mtime
+    if _make_models_cache is not None and _make_models_mtime == mtime:
+        return _make_models_cache
+
+    data = _read_json(MAKE_MODELS_PATH)
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="make_models.json must be an object: { MAKE: [models...] }")
+
     normalized: Dict[str, List[str]] = {}
     for k, v in data.items():
-        key = str(k).strip().upper()
+        make = str(k).strip().upper()
         if isinstance(v, list):
-            normalized[key] = [str(m).strip() for m in v if str(m).strip()]
+            normalized[make] = [str(m).strip() for m in v if str(m).strip()]
         else:
-            normalized[key] = []
+            normalized[make] = []
+
+    _make_models_cache = normalized
+    _make_models_mtime = mtime
     return normalized
 
 
-def load_catalog() -> Dict[str, List[str]]:
-    """
-    Load make->models from services_catalog.json.
-    Caches in memory, and reloads automatically if the file changes.
-    """
-    global _catalog_cache, _catalog_mtime
+def load_services_catalog() -> Dict[str, Any]:
+    global _services_cache, _services_mtime
 
-    if not CATALOG_PATH.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Missing services_catalog.json at project root (same folder as app.py).",
-        )
+    if not SERVICES_CATALOG_PATH.exists():
+        raise HTTPException(status_code=500, detail="Missing services_catalog.json at project root.")
 
-    mtime = CATALOG_PATH.stat().st_mtime
-    if _catalog_cache is not None and _catalog_mtime == mtime:
-        return _catalog_cache
+    mtime = SERVICES_CATALOG_PATH.stat().st_mtime
+    if _services_cache is not None and _services_mtime == mtime:
+        return _services_cache
 
-    try:
-        raw = CATALOG_PATH.read_text(encoding="utf-8")
-        data = json.loads(raw)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Invalid services_catalog.json: {e}")
-
+    data = _read_json(SERVICES_CATALOG_PATH)
     if not isinstance(data, dict):
-        raise HTTPException(status_code=500, detail="services_catalog.json must be a JSON object mapping make->models[]")
+        raise HTTPException(status_code=500, detail="services_catalog.json must be a JSON object.")
 
-    _catalog_cache = _normalize_catalog(data)
-    _catalog_mtime = mtime
-    return _catalog_cache
+    if "categories" not in data or not isinstance(data["categories"], list):
+        raise HTTPException(status_code=500, detail="services_catalog.json must include: { categories: [...] }")
+
+    _services_cache = data
+    _services_mtime = mtime
+    return data
 
 
-# ===============================
-# PRICING HELPERS
-# ===============================
+def find_service_by_code(service_code: str) -> Optional[Dict[str, Any]]:
+    cat = load_services_catalog()
+    code = (service_code or "").strip()
+    if not code:
+        return None
+
+    for c in cat["categories"]:
+        for s in c.get("services", []):
+            if s.get("code") == code:
+                return s
+    return None
+
+
+def default_labor_rate() -> float:
+    cat = load_services_catalog()
+    return float(cat.get("default_labor_rate") or cat.get("labor_rate") or 90)
+
+
 def zip_multiplier(zip_code: str) -> float:
     z = (zip_code or "").strip()[:5]
     if len(z) == 5 and z.isdigit():
@@ -135,34 +155,8 @@ def year_multiplier(year: int) -> float:
     return 1.00
 
 
-def base_service_price(service: str) -> float:
-    return float(SERVICE_BASE_PRICE.get(service, 0))
-
-
-def validate_make_model(make: str, model: str, catalog: Dict[str, List[str]]) -> Tuple[str, str]:
-    make_key = (make or "").strip().upper()
-    if not make_key:
-        raise HTTPException(status_code=400, detail="Make is required")
-
-    if make_key not in catalog:
-        raise HTTPException(status_code=400, detail=f"Invalid make: {make}")
-
-    model_in = (model or "").strip()
-    if not model_in:
-        raise HTTPException(status_code=400, detail="Model is required")
-
-    # Case-insensitive model check
-    allowed = catalog[make_key]
-    allowed_upper = {m.upper(): m for m in allowed}
-    if model_in.upper() not in allowed_upper:
-        raise HTTPException(status_code=400, detail=f"Invalid model '{model}' for make '{make}'")
-
-    # Return normalized make/model
-    return make_key, allowed_upper[model_in.upper()]
-
-
 # ===============================
-# MODELS
+# REQUEST/RESPONSE MODELS
 # ===============================
 class EstimateRequest(BaseModel):
     year: int = Field(..., ge=1970, le=2035)
@@ -170,11 +164,14 @@ class EstimateRequest(BaseModel):
     model: str = Field(..., min_length=1)
 
     category: Optional[str] = None
-    service: str = Field(..., min_length=1)
+
+    # You can send serviceCode (recommended) OR service (name fallback)
+    serviceCode: Optional[str] = None
+    service: Optional[str] = None
 
     laborHours: float = Field(0, ge=0)
     partsPrice: float = Field(0, ge=0)
-    laborRate: float = Field(90, ge=0)
+    laborRate: Optional[float] = Field(None, ge=0)
 
     notes: Optional[str] = None
     customerName: Optional[str] = None
@@ -188,33 +185,26 @@ class EstimateResponse(BaseModel):
     estimate: int
     currency: str = "USD"
     breakdown: Dict[str, float]
+    service_name: str
 
 
 # ===============================
-# STARTUP CHECKS (fail fast)
+# STARTUP CHECKS
 # ===============================
 @app.on_event("startup")
 def _startup_checks() -> None:
     if not STATIC_DIR.exists():
         raise RuntimeError(f"Missing folder: {STATIC_DIR}")
-
     if not INDEX_HTML.exists():
         raise RuntimeError("Missing static/index.html")
 
-    # Optional but recommended
-    mw = STATIC_DIR / "manifest.webmanifest"
-    sw = STATIC_DIR / "sw.js"
-    if not mw.exists():
-        print("WARNING: static/manifest.webmanifest is missing (PWA install will not work).")
-    if not sw.exists():
-        print("WARNING: static/sw.js is missing (offline/install will not work).")
-
-    # Validate catalog loads
-    _ = load_catalog()
+    # Validate both catalogs load
+    _ = load_make_models()
+    _ = load_services_catalog()
 
 
 # ===============================
-# ROUTES
+# ROOT + PWA
 # ===============================
 @app.get("/", response_class=HTMLResponse)
 def home() -> HTMLResponse:
@@ -223,10 +213,6 @@ def home() -> HTMLResponse:
 
 @app.get("/manifest.webmanifest")
 def manifest() -> FileResponse:
-    """
-    Serve manifest at root for best PWA behavior.
-    File lives in /static/manifest.webmanifest.
-    """
     p = STATIC_DIR / "manifest.webmanifest"
     if not p.exists():
         raise HTTPException(status_code=500, detail="Missing static/manifest.webmanifest")
@@ -239,10 +225,6 @@ def manifest() -> FileResponse:
 
 @app.get("/sw.js")
 def service_worker() -> FileResponse:
-    """
-    Serve SW at root so scope covers the whole site.
-    File lives in /static/sw.js.
-    """
     p = STATIC_DIR / "sw.js"
     if not p.exists():
         raise HTTPException(status_code=500, detail="Missing static/sw.js")
@@ -258,49 +240,116 @@ def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+# ===============================
+# MAKES / MODELS API
+# ===============================
 @app.get("/api/makes")
 def get_makes() -> List[str]:
+    # exactly your "popular list"
     return POPULAR_MAKES
 
 
 @app.get("/api/models/{make}")
 def get_models(make: str) -> List[str]:
-    catalog = load_catalog()
+    mm = load_make_models()
     key = (make or "").strip().upper()
-    if key not in catalog:
+    if key not in mm:
         raise HTTPException(status_code=404, detail=f"Make '{make}' not found")
-    return sorted(catalog[key])
+    return sorted(mm[key])
 
 
+# ===============================
+# SERVICES API
+# ===============================
+@app.get("/api/categories")
+def get_categories() -> List[Dict[str, str]]:
+    cat = load_services_catalog()
+    out: List[Dict[str, str]] = []
+    for c in cat["categories"]:
+        out.append({"key": c.get("key", ""), "name": c.get("name", "")})
+    return out
+
+
+@app.get("/api/services/{category_key}")
+def get_services(category_key: str) -> List[Dict[str, Any]]:
+    cat = load_services_catalog()
+    ck = (category_key or "").strip()
+    for c in cat["categories"]:
+        if c.get("key") == ck:
+            return c.get("services", [])
+    raise HTTPException(status_code=404, detail=f"Category '{category_key}' not found")
+
+
+@app.get("/api/service/{service_code}")
+def get_service(service_code: str) -> Dict[str, Any]:
+    s = find_service_by_code(service_code)
+    if not s:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return s
+
+
+# ===============================
+# ESTIMATE
+# ===============================
 @app.post("/estimate", response_model=EstimateResponse)
 def estimate(req: EstimateRequest) -> EstimateResponse:
-    catalog = load_catalog()
+    mm = load_make_models()
 
-    make_key, model_norm = validate_make_model(req.make, req.model, catalog)
+    make_key = req.make.strip().upper()
+    if make_key not in mm:
+        raise HTTPException(status_code=400, detail="Invalid make")
 
-    base = base_service_price(req.service)
-    if base <= 0:
-        raise HTTPException(status_code=400, detail=f"Invalid service selection: {req.service}")
+    model = (req.model or "").strip()
+    if not model:
+        raise HTTPException(status_code=400, detail="Model is required")
 
-    labor = float(req.laborHours) * float(req.laborRate)
+    allowed_upper = {m.upper(): m for m in mm[make_key]}
+    if model.upper() not in allowed_upper:
+        raise HTTPException(status_code=400, detail="Invalid model for selected make")
+
+    # Determine service
+    service_name = ""
+    hours_default = 0.0
+
+    if req.serviceCode:
+        s = find_service_by_code(req.serviceCode)
+        if not s:
+            raise HTTPException(status_code=400, detail="Invalid serviceCode")
+        service_name = str(s.get("name", "")).strip()
+        # Default labor hours = midpoint of min/max
+        mn = float(s.get("labor_hours_min", 0))
+        mx = float(s.get("labor_hours_max", 0))
+        if mx > 0 and mx >= mn:
+            hours_default = (mn + mx) / 2.0
+    else:
+        service_name = (req.service or "").strip()
+        if not service_name:
+            raise HTTPException(status_code=400, detail="Select a service")
+
+    labor_rate = float(req.laborRate) if req.laborRate is not None else default_labor_rate()
+    labor_hours = float(req.laborHours) if req.laborHours and req.laborHours > 0 else hours_default
+
+    labor = labor_hours * labor_rate
     parts = float(req.partsPrice)
 
     z = zip_multiplier(req.zip or "00000")
     y = year_multiplier(req.year)
 
-    subtotal = (base + labor + parts) * z * y
+    subtotal = (labor + parts) * z * y
     final_price = int(round(subtotal))
 
     return EstimateResponse(
         estimate=final_price,
+        service_name=service_name,
         breakdown={
-            "base_service": base,
-            "labor": labor,
-            "parts": parts,
-            "zip_multiplier": z,
-            "year_multiplier": y,
-            "subtotal": subtotal,
-        },
+          "labor_hours": labor_hours,
+          "labor_rate": labor_rate,
+          "labor": labor,
+          "parts": parts,
+          "zip_multiplier": z,
+          "year_multiplier": y,
+          "subtotal": subtotal
+        }
     )
 
 
@@ -327,14 +376,14 @@ def estimate_pdf(req: EstimateRequest) -> Response:
     c.drawString(72, y, "Vehicle")
     y -= 16
     c.setFont("Helvetica", 11)
-    c.drawString(72, y, f"{req.year} {make_key} {model_norm}")
+    c.drawString(72, y, f"{req.year} {req.make} {req.model}")
     y -= 18
 
     c.setFont("Helvetica-Bold", 12)
     c.drawString(72, y, "Service")
     y -= 16
     c.setFont("Helvetica", 11)
-    c.drawString(72, y, req.service)
+    c.drawString(72, y, est.service_name)
     y -= 18
 
     c.setFont("Helvetica-Bold", 12)
