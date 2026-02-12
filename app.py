@@ -180,4 +180,66 @@ def estimate(req: EstimateRequest) -> EstimateResponse:
 
 
 @app.post("/estimate/pdf")
-def estimate_pdf(req: EstimateRequest)_
+def estimate_pdf(req: EstimateRequest) -> Response:
+    est = estimate(req)
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    _, height = letter
+
+    y = height - 72
+    c.setTitle("Auto Mechanic Estimate")
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, y, "Auto Mechanic Estimate")
+    y -= 24
+
+    c.setFont("Helvetica", 11)
+    c.drawString(72, y, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    y -= 24
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Vehicle")
+    y -= 16
+    c.setFont("Helvetica", 11)
+    c.drawString(72, y, f"{req.year} {req.make} {req.model}")
+    y -= 24
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Service")
+    y -= 16
+    c.setFont("Helvetica", 11)
+    c.drawString(72, y, req.service)
+    y -= 24
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Location")
+    y -= 16
+    c.setFont("Helvetica", 11)
+    c.drawString(72, y, f"ZIP: {req.zip or '00000'}")
+    y -= 24
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(72, y, "Estimate")
+    y -= 16
+    c.setFont("Helvetica", 12)
+    c.drawString(72, y, f"${est.estimate:,} {est.currency}")
+    y -= 24
+
+    c.setFont("Helvetica-Oblique", 9)
+    c.drawString(72, y, "Note: This is an estimate. Final pricing may vary after inspection.")
+
+    c.showPage()
+    c.save()
+
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=estimate.pdf"},
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
