@@ -13,3 +13,34 @@
 #estimateBtn:active{ transform: translateY(1px); }
 #estimateBtn{ display:block; margin:18px 0 0; }
 
+#estimateBtn{
+  margin-top: 14px;
+  width: 220px;
+  height: 52px;
+  border-radius: 14px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 16px;
+  color: #fff;
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  box-shadow: 0 14px 28px rgba(37,99,235,.25);
+}
+#estimateBtn:hover{ filter: brightness(1.05); }
+#estimateBtn:active{ transform: translateY(1px); }
+
+.status{
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.92);
+  font-weight: 600;
+}
+.status.error{
+  border-color: rgba(239,68,68,.35);
+  color: rgba(255,255,255,.95);
+}
+
+
