@@ -1,17 +1,29 @@
+/* static/app.js */
+
 // ===============================
 // SERVICE WORKER REGISTRATION (root scope)
 // ===============================
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then(() => console.log("Service Worker registered"))
-      .catch((err) => console.error("SW registration failed:", err));
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      console.log("Service Worker registered", reg);
+
+      // Optional: auto-refresh when a new SW takes over
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    } catch (err) {
+      console.error("SW registration failed:", err);
+    }
   });
 }
 
 // ===============================
-// DOM
+// DOM HELPERS
 // ===============================
 const $ = (id) => document.getElementById(id);
 
@@ -40,10 +52,16 @@ const customerPhoneEl = $("customerPhone");
 // ===============================
 // STATUS UI
 // ===============================
-function setStatus(msg, kind = "info") {
+function setStatus(msg = "", kind = "info") {
   if (!statusBox) return;
-  statusBox.textContent = msg || "";
-  statusBox.dataset.kind = kind; // optional hook for CSS
+  statusBox.textContent = msg;
+  statusBox.dataset.kind = kind;
+}
+
+function setDisabled(el, disabled) {
+  if (!el) return;
+  el.disabled = !!disabled;
+  el.style.opacity = disabled ? "0.7" : "1";
 }
 
 // ===============================
@@ -66,32 +84,52 @@ function loadYears() {
 }
 
 // ===============================
+// FETCH HELPERS
+// ===============================
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, { cache: "no-store", ...options });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText} ${txt}`.trim());
+  }
+  return res.json();
+}
+
+// ===============================
 // MAKE/MODEL
 // ===============================
 async function loadMakes() {
+  if (!makeEl) return;
+
   try {
     setStatus("Loading makes...");
-    const res = await fetch("/api/makes", { cache: "no-store" });
-    if (!res.ok) throw new Error(`Makes failed: ${res.status}`);
-    const makes = await res.json();
+    setDisabled(makeEl, true);
+    setDisabled(modelEl, true);
+
+    const makes = await fetchJson("/api/makes");
 
     makeEl.innerHTML = `<option value="">Select Make</option>`;
-    makes.forEach((m) => {
+    for (const m of makes) {
       const opt = document.createElement("option");
       opt.value = m;
       opt.textContent = m;
       makeEl.appendChild(opt);
-    });
+    }
 
     modelEl.innerHTML = `<option value="">Select Model</option>`;
     setStatus("");
   } catch (err) {
     console.error(err);
-    setStatus("Could not load makes. Check server is running.", "error");
+    setStatus("Could not load makes. Is the server running?", "error");
+  } finally {
+    setDisabled(makeEl, false);
+    setDisabled(modelEl, false);
   }
 }
 
 async function loadModels(make) {
+  if (!modelEl) return;
+
   try {
     if (!make) {
       modelEl.innerHTML = `<option value="">Select Model</option>`;
@@ -99,25 +137,25 @@ async function loadModels(make) {
     }
 
     setStatus("Loading models...");
-    modelEl.innerHTML = `<option value="">Loading...</option>`;
+    setDisabled(modelEl, true);
 
-    const res = await fetch(`/api/models/${encodeURIComponent(make)}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Models failed: ${res.status}`);
-    const models = await res.json();
+    const models = await fetchJson(`/api/models/${encodeURIComponent(make)}`);
 
     modelEl.innerHTML = `<option value="">Select Model</option>`;
-    models.forEach((m) => {
+    for (const m of models) {
       const opt = document.createElement("option");
       opt.value = m;
       opt.textContent = m;
       modelEl.appendChild(opt);
-    });
+    }
 
     setStatus("");
   } catch (err) {
     console.error(err);
     setStatus("Could not load models for that make.", "error");
     modelEl.innerHTML = `<option value="">Select Model</option>`;
+  } finally {
+    setDisabled(modelEl, false);
   }
 }
 
@@ -128,9 +166,8 @@ if (makeEl) {
 }
 
 // ===============================
-// SERVICES
+// SERVICES (stable fallback list)
 // ===============================
-// Simple fallback services (so app always works even if you later change catalogs)
 const FALLBACK_SERVICES = [
   "Oil Change",
   "Brake Pads (Front)",
@@ -142,43 +179,57 @@ const FALLBACK_SERVICES = [
   "Diagnostic",
 ];
 
-function loadServicesFallback() {
+function loadServices() {
   if (categoryEl) {
     categoryEl.innerHTML = `<option value="">General</option>`;
   }
   if (serviceEl) {
     serviceEl.innerHTML = `<option value="">Select Service</option>`;
-    FALLBACK_SERVICES.forEach((s) => {
+    for (const s of FALLBACK_SERVICES) {
       const opt = document.createElement("option");
       opt.value = s;
       opt.textContent = s;
       serviceEl.appendChild(opt);
-    });
+    }
   }
 }
 
 // ===============================
-// SIGNATURE (simple draw capture)
+// SIGNATURE CANVAS (mobile-friendly)
 // ===============================
+let sigCtx = null;
 let sigDrawing = false;
 let sigHasInk = false;
-let sigCtx = null;
+let sigLast = null;
 
-function resizeSignatureCanvas() {
+function setupCanvasScale() {
   if (!sigCanvas) return;
+
   const rect = sigCanvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
+
+  // Save existing drawing (if any) before resize
+  const prev = sigHasInk ? sigCanvas.toDataURL("image/png") : null;
 
   sigCanvas.width = Math.floor(rect.width * dpr);
   sigCanvas.height = Math.floor(rect.height * dpr);
 
   sigCtx = sigCanvas.getContext("2d");
-  sigCtx.scale(dpr, dpr);
+  sigCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   sigCtx.lineWidth = 2;
   sigCtx.lineCap = "round";
+
+  // Restore drawing after resize (best effort)
+  if (prev) {
+    const img = new Image();
+    img.onload = () => {
+      sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
+    };
+    img.src = prev;
+  }
 }
 
-function getPoint(evt) {
+function pointFromEvent(evt) {
   const rect = sigCanvas.getBoundingClientRect();
   const touch = evt.touches && evt.touches[0];
   const clientX = touch ? touch.clientX : evt.clientX;
@@ -189,44 +240,46 @@ function getPoint(evt) {
 function sigStart(evt) {
   if (!sigCtx) return;
   sigDrawing = true;
-  const p = getPoint(evt);
+  sigLast = pointFromEvent(evt);
   sigCtx.beginPath();
-  sigCtx.moveTo(p.x, p.y);
+  sigCtx.moveTo(sigLast.x, sigLast.y);
   evt.preventDefault?.();
 }
 
 function sigMove(evt) {
   if (!sigDrawing || !sigCtx) return;
-  const p = getPoint(evt);
+
+  const p = pointFromEvent(evt);
   sigCtx.lineTo(p.x, p.y);
   sigCtx.stroke();
+
+  sigLast = p;
   sigHasInk = true;
   evt.preventDefault?.();
 }
 
 function sigEnd() {
   sigDrawing = false;
+  sigLast = null;
 }
 
 function clearSignature() {
   if (!sigCanvas || !sigCtx) return;
-  sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCtx.clearRect(0, 0, rect.width, rect.height);
   sigHasInk = false;
 }
 
 function getSignatureDataUrl() {
   if (!sigCanvas || !sigHasInk) return null;
-  // Use PNG data URL
   return sigCanvas.toDataURL("image/png");
 }
 
-// Setup signature events
 function initSignature() {
   if (!sigCanvas) return;
 
-  // Ensure canvas has size based on CSS
-  resizeSignatureCanvas();
-  window.addEventListener("resize", resizeSignatureCanvas);
+  setupCanvasScale();
+  window.addEventListener("resize", setupCanvasScale);
 
   // Mouse
   sigCanvas.addEventListener("mousedown", sigStart);
@@ -245,9 +298,10 @@ function initSignature() {
 // CLEAR FIELDS
 // ===============================
 function clearFields() {
+  if (yearEl) yearEl.value = String(new Date().getFullYear());
+
   if (makeEl) makeEl.value = "";
   if (modelEl) modelEl.innerHTML = `<option value="">Select Model</option>`;
-  if (yearEl) yearEl.value = String(new Date().getFullYear());
 
   if (categoryEl) categoryEl.value = "";
   if (serviceEl) serviceEl.value = "";
@@ -269,37 +323,29 @@ if (clearBtn) clearBtn.addEventListener("click", clearFields);
 // ===============================
 // BUILD REQUEST PAYLOAD
 // ===============================
+function num(el, fallback = 0) {
+  const v = parseFloat(el?.value ?? "");
+  return Number.isFinite(v) ? v : fallback;
+}
+
 function buildPayload() {
-  const year = parseInt(yearEl?.value || "", 10);
-  const make = makeEl?.value || "";
-  const model = modelEl?.value || "";
-  const category = categoryEl?.value || "";
-  const service = serviceEl?.value || "";
-
-  const laborHours = parseFloat(laborHoursEl?.value || "0") || 0;
-  const partsPrice = parseFloat(partsPriceEl?.value || "0") || 0;
-  const laborRate = parseFloat(laborRateEl?.value || "0") || 0;
-
-  const notes = notesEl?.value || "";
-  const customerName = customerNameEl?.value || "";
-  const customerPhone = customerPhoneEl?.value || "";
-
-  const signatureDataUrl = getSignatureDataUrl();
-
   return {
-    year,
-    make,
-    model,
-    category,
-    service,
-    laborHours,
-    partsPrice,
-    laborRate,
-    notes,
-    customerName,
-    customerPhone,
-    signatureDataUrl,
-    // zip is optional; add later if you put it in UI
+    year: parseInt(yearEl?.value || "", 10),
+    make: (makeEl?.value || "").trim(),
+    model: (modelEl?.value || "").trim(),
+    category: (categoryEl?.value || "").trim(),
+    service: (serviceEl?.value || "").trim(),
+
+    laborHours: num(laborHoursEl, 0),
+    partsPrice: num(partsPriceEl, 0),
+    laborRate: num(laborRateEl, 90),
+
+    notes: (notesEl?.value || "").trim(),
+    customerName: (customerNameEl?.value || "").trim(),
+    customerPhone: (customerPhoneEl?.value || "").trim(),
+
+    signatureDataUrl: getSignatureDataUrl(),
+    // zip optional if you later add it to UI
   };
 }
 
@@ -320,13 +366,13 @@ function validatePayload(p) {
 async function createEstimate() {
   const payload = buildPayload();
   const err = validatePayload(payload);
-  if (err) {
-    setStatus(err, "error");
-    return;
-  }
+  if (err) return setStatus(err, "error");
 
   try {
+    setDisabled(estimateBtn, true);
+    setDisabled(pdfBtn, true);
     setStatus("Creating estimate...");
+
     const res = await fetch("/estimate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,8 +380,8 @@ async function createEstimate() {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Estimate failed: ${res.status} ${text}`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Estimate failed: ${res.status} ${txt}`.trim());
     }
 
     const result = await res.json();
@@ -343,6 +389,9 @@ async function createEstimate() {
   } catch (e) {
     console.error(e);
     setStatus("Estimate failed. Check server and try again.", "error");
+  } finally {
+    setDisabled(estimateBtn, false);
+    setDisabled(pdfBtn, false);
   }
 }
 
@@ -354,13 +403,13 @@ if (estimateBtn) estimateBtn.addEventListener("click", createEstimate);
 async function downloadPdf() {
   const payload = buildPayload();
   const err = validatePayload(payload);
-  if (err) {
-    setStatus(err, "error");
-    return;
-  }
+  if (err) return setStatus(err, "error");
 
   try {
+    setDisabled(estimateBtn, true);
+    setDisabled(pdfBtn, true);
     setStatus("Generating PDF...");
+
     const res = await fetch("/estimate/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -368,8 +417,8 @@ async function downloadPdf() {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`PDF failed: ${res.status} ${text}`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(`PDF failed: ${res.status} ${txt}`.trim());
     }
 
     const blob = await res.blob();
@@ -387,6 +436,9 @@ async function downloadPdf() {
   } catch (e) {
     console.error(e);
     setStatus("Could not generate PDF.", "error");
+  } finally {
+    setDisabled(estimateBtn, false);
+    setDisabled(pdfBtn, false);
   }
 }
 
@@ -395,10 +447,10 @@ if (pdfBtn) pdfBtn.addEventListener("click", downloadPdf);
 // ===============================
 // INIT
 // ===============================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   loadYears();
-  loadMakes();
-  loadServicesFallback();
+  loadServices();
   initSignature();
+  await loadMakes();
   setStatus("");
 });
