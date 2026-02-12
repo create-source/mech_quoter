@@ -1,5 +1,7 @@
 {
-  "labor_rate": 90,
+  "version": "1.0.0",
+  "currency": "USD",
+  "default_labor_rate": 90,
   "categories": [
     {
       "key": "maintenance",
@@ -12,14 +14,12 @@
         { "code": "engine_air_filter", "name": "Engine Air Filter Replacement", "labor_hours_min": 0.2, "labor_hours_max": 0.6 },
         { "code": "cabin_air_filter", "name": "Cabin Air Filter Replacement", "labor_hours_min": 0.3, "labor_hours_max": 0.8 },
         { "code": "wiper_blades", "name": "Wiper Blade Replacement", "labor_hours_min": 0.2, "labor_hours_max": 0.5 },
-        { "code": "battery_service", "name": "Battery Terminal Cleaning", "labor_hours_min": 0.3, "labor_hours_max": 0.7 },
+        { "code": "battery_terminal_clean", "name": "Battery Terminal Cleaning", "labor_hours_min": 0.3, "labor_hours_max": 0.7 },
         { "code": "multi_point_inspection", "name": "Multi-Point Inspection", "labor_hours_min": 0.5, "labor_hours_max": 1.2 },
         { "code": "fluid_top_off", "name": "Fluid Top-Off Service", "labor_hours_min": 0.2, "labor_hours_max": 0.5 },
         { "code": "transmission_flush", "name": "Transmission Fluid Flush", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
-        { "code": "diff_fluid", "name": "Differential Fluid Service", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
-        { "code": "brake_bleed", "name": "Brake Bleed", "labor_hours_min": 0.8, "labor_hours_max": 1.8 },
+        { "code": "differential_fluid_service", "name": "Differential Fluid Service", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "fuel_induction_service", "name": "Fuel Induction Service", "labor_hours_min": 0.8, "labor_hours_max": 1.8 }
-
       ]
     },
     {
@@ -30,25 +30,24 @@
         { "code": "check_engine_light", "name": "Check Engine Light Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "spark_plugs_4", "name": "Spark Plug Replacement (4-Cyl)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "spark_plugs_v6_v8", "name": "Spark Plug Replacement (V6/V8)", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
-        { "code": "coil_replacement", "name": "Ignition Coil Replacement (each)", "labor_hours_min": 0.4, "labor_hours_max": 1.0 },
+        { "code": "coil_replacement_each", "name": "Ignition Coil Replacement (each)", "labor_hours_min": 0.4, "labor_hours_max": 1.0 },
         { "code": "valve_cover_gasket", "name": "Valve Cover Gasket Replacement", "labor_hours_min": 2.5, "labor_hours_max": 6.0 },
         { "code": "oil_pan_gasket", "name": "Oil Pan Gasket Replacement", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
         { "code": "head_gasket", "name": "Head Gasket Replacement", "labor_hours_min": 10.0, "labor_hours_max": 22.0 },
         { "code": "timing_chain", "name": "Timing Chain Service", "labor_hours_min": 6.0, "labor_hours_max": 16.0 },
         { "code": "timing_belt", "name": "Timing Belt Replacement", "labor_hours_min": 3.5, "labor_hours_max": 7.5 },
-        { "code": "engine_mount", "name": "Engine Mount Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
+        { "code": "engine_mount_each", "name": "Engine Mount Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
+        { "code": "engine_mount_set", "name": "Engine Mount Replacement (set)", "labor_hours_min": 2.0, "labor_hours_max": 8.0 },
         { "code": "intake_manifold_gasket", "name": "Intake Manifold Gasket Replacement", "labor_hours_min": 3.0, "labor_hours_max": 8.0 },
         { "code": "intake_manifold_replace", "name": "Intake Manifold Replacement", "labor_hours_min": 3.5, "labor_hours_max": 9.0 },
         { "code": "oil_filter_housing", "name": "Oil Filter Housing Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
         { "code": "oil_filter_housing_gasket", "name": "Oil Filter Housing Gasket Replacement", "labor_hours_min": 1.2, "labor_hours_max": 4.0 },
         { "code": "oil_cooler", "name": "Oil Cooler Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0 },
         { "code": "rear_main_seal", "name": "Rear Main Seal Replacement", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
-        { "code": "front_main_seal", "name": "Front Crank Seal Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0 },
-        { "code": "cam_seals", "name": "Camshaft Seal Replacement", "labor_hours_min": 2.5, "labor_hours_max": 7.0 },
+        { "code": "front_crank_seal", "name": "Front Crank Seal Replacement", "labor_hours_min": 2.0, "labor_hours_max": 6.0 },
+        { "code": "camshaft_seals", "name": "Camshaft Seal Replacement", "labor_hours_min": 2.5, "labor_hours_max": 7.0 },
         { "code": "pcv_service", "name": "PCV System Service", "labor_hours_min": 1.0, "labor_hours_max": 4.0 },
-        { "code": "vacuum_leak_diag", "name": "Vacuum Leak Diagnosis (Smoke Test)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
-        { "code": "engine_mounts", "name": "Engine Mount Replacement (set)", "labor_hours_min": 2.0, "labor_hours_max": 8.0 }
-
+        { "code": "vacuum_leak_diag_smoke", "name": "Vacuum Leak Diagnosis (Smoke Test)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
     },
     {
@@ -61,9 +60,8 @@
         { "code": "coolant_flush", "name": "Coolant Flush", "labor_hours_min": 1.0, "labor_hours_max": 2.0 },
         { "code": "coolant_leak_diag", "name": "Coolant Leak Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
         { "code": "fan_assembly", "name": "Cooling Fan Assembly", "labor_hours_min": 1.2, "labor_hours_max": 3.5 },
-        { "code": "hose_replace", "name": "Coolant Hose Replacement (each)", "labor_hours_min": 0.7, "labor_hours_max": 2.5 },
-        { "code": "heater_core", "name": "Heater Core Replacement", "labor_hours_min": 5.0, "labor_hours_max": 12.0 }
-        
+        { "code": "coolant_hose_each", "name": "Coolant Hose Replacement (each)", "labor_hours_min": 0.7, "labor_hours_max": 2.5 },
+        { "code": "heater_core_cooling", "name": "Heater Core Replacement", "labor_hours_min": 5.0, "labor_hours_max": 12.0 }
       ]
     },
     {
@@ -76,13 +74,11 @@
         { "code": "pads_rotors_axle", "name": "Pads & Rotors (per axle)", "labor_hours_min": 2.0, "labor_hours_max": 3.5 },
         { "code": "caliper_each", "name": "Brake Caliper Replacement (each)", "labor_hours_min": 1.2, "labor_hours_max": 2.5 },
         { "code": "brake_flush", "name": "Brake Fluid Flush", "labor_hours_min": 1.0, "labor_hours_max": 1.8 },
-        { "code": "front_brake_pads_rotors", "name": "Front Brake Pads & Rotors", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
-        { "code": "rear_brake_pads_rotors", "name": "Rear Brake Pads & Rotors", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
-        { "code": "brake_caliper", "name": "Brake Caliper Replacement (each)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
-        { "code": "brake_hose", "name": "Brake Hose Replacement (each)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
-        { "code": "brake_bleed", "name": "Brake Bleed / Flush", "labor_hours_min": 0.8, "labor_hours_max": 2.0 },
+        { "code": "front_pads_rotors", "name": "Front Brake Pads & Rotors", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
+        { "code": "rear_pads_rotors", "name": "Rear Brake Pads & Rotors", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
+        { "code": "brake_hose_each", "name": "Brake Hose Replacement (each)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
+        { "code": "brake_bleed_flush", "name": "Brake Bleed / Flush", "labor_hours_min": 0.8, "labor_hours_max": 2.0 },
         { "code": "abs_diag", "name": "ABS Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
-
       ]
     },
     {
@@ -93,7 +89,7 @@
         { "code": "shocks_pair", "name": "Rear Shocks (pair)", "labor_hours_min": 1.2, "labor_hours_max": 2.5 },
         { "code": "control_arm_each", "name": "Control Arm (each)", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
         { "code": "ball_joint_each", "name": "Ball Joint (each)", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
-        { "code": "tie_rod_each", "name": "Tie Rod End (each)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
+        { "code": "tie_rod_end_each", "name": "Tie Rod End (each)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "alignment", "name": "Wheel Alignment", "labor_hours_min": 1.0, "labor_hours_max": 1.8 }
       ]
     },
@@ -101,10 +97,10 @@
       "key": "drivetrain",
       "name": "Drivetrain (FWD / RWD / AWD / 4WD)",
       "services": [
-        { "code": "cv_axle_replace", "name": "CV Axle Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
-        { "code": "axle_seal_replace", "name": "Axle Seal Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
-        { "code": "driveshaft_replace", "name": "Driveshaft Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
-        { "code": "u_joint_replace", "name": "U-Joint Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
+        { "code": "cv_axle_each", "name": "CV Axle Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
+        { "code": "axle_seal_each", "name": "Axle Seal Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
+        { "code": "driveshaft", "name": "Driveshaft Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
+        { "code": "u_joint", "name": "U-Joint Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
         { "code": "carrier_bearing", "name": "Carrier Bearing Replacement", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
         { "code": "front_diff_service", "name": "Front Differential Fluid Service", "labor_hours_min": 1.0, "labor_hours_max": 2.0 },
         { "code": "rear_diff_service", "name": "Rear Differential Fluid Service", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
@@ -112,9 +108,9 @@
         { "code": "transfer_case_replace", "name": "Transfer Case Replacement", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
         { "code": "front_diff_replace", "name": "Front Differential Replacement", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
         { "code": "rear_diff_replace", "name": "Rear Differential Replacement", "labor_hours_min": 3.0, "labor_hours_max": 8.0 },
-        { "code": "wheel_bearing_hub", "name": "Wheel Bearing / Hub Assembly (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
+        { "code": "wheel_bearing_hub_each", "name": "Wheel Bearing / Hub Assembly (each)", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
         { "code": "4wd_actuator", "name": "4WD Actuator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.5 },
-        { "code": "iwe_hub_replace", "name": "Ford IWE Hub Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
+        { "code": "iwe_hub_each", "name": "Ford IWE Hub Replacement (each)", "labor_hours_min": 1.5, "labor_hours_max": 3.5 },
         { "code": "driveline_vibration_diag", "name": "Driveline Vibration Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
     },
@@ -124,11 +120,10 @@
       "services": [
         { "code": "trans_diag", "name": "Transmission Diagnostic", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
         { "code": "trans_service", "name": "Transmission Fluid Service", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
-        { "code": "clutch_replace", "name": "Clutch Replacement (Manual)", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
+        { "code": "clutch_replace_manual", "name": "Clutch Replacement (Manual)", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
         { "code": "trans_mount", "name": "Transmission Mount Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.0 },
         { "code": "trans_replacement", "name": "Transmission Replacement", "labor_hours_min": 10.0, "labor_hours_max": 18.0 },
-        { "code": "trans_pan_gasket", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0 },
-        { "code": "mount_replacement", "name": "Transmission Mount Replacement", "labor_hours_min": 1.0, "labor_hours_max": 3.5 }
+        { "code": "trans_pan_gasket_filter", "name": "Transmission Pan Gasket + Filter", "labor_hours_min": 1.5, "labor_hours_max": 3.0 }
       ]
     },
     {
@@ -137,9 +132,9 @@
       "services": [
         { "code": "ac_diag", "name": "A/C Diagnostic", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "ac_recharge", "name": "A/C Recharge", "labor_hours_min": 1.0, "labor_hours_max": 1.8 },
-        { "code": "compressor", "name": "A/C Compressor Replacement", "labor_hours_min": 3.0, "labor_hours_max": 6.5 },
+        { "code": "ac_compressor", "name": "A/C Compressor Replacement", "labor_hours_min": 3.0, "labor_hours_max": 6.5 },
         { "code": "blower_motor", "name": "Blower Motor Replacement", "labor_hours_min": 1.2, "labor_hours_max": 3.5 },
-        { "code": "heater_core", "name": "Heater Core Replacement", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
+        { "code": "heater_core_hvac", "name": "Heater Core Replacement", "labor_hours_min": 6.0, "labor_hours_max": 12.0 },
         { "code": "blend_door_actuator", "name": "Blend Door Actuator Replacement", "labor_hours_min": 1.5, "labor_hours_max": 5.0 }
       ]
     },
@@ -172,8 +167,8 @@
         { "code": "cat_converter", "name": "Catalytic Converter Replacement", "labor_hours_min": 1.5, "labor_hours_max": 4.0 },
         { "code": "muffler", "name": "Muffler Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.5 },
         { "code": "evap_diag", "name": "EVAP Diagnosis", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
-        { "code": "charcoal_canister_replacement", "name": "Charcoal Canister Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.8 },
-        { "code": "exhaust_leak_repair", "name": "Exhaust Leak Repair (minor)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
+        { "code": "charcoal_canister", "name": "Charcoal Canister Replacement", "labor_hours_min": 1.0, "labor_hours_max": 2.8 },
+        { "code": "exhaust_leak_minor", "name": "Exhaust Leak Repair (minor)", "labor_hours_min": 1.0, "labor_hours_max": 2.5 }
       ]
     },
     {
@@ -183,26 +178,21 @@
         { "code": "rust_treatment_small", "name": "Rust Removal + Treatment (Small Area < 1 sq ft)", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
         { "code": "rust_treatment_medium", "name": "Rust Removal + Treatment (Medium Area 1–4 sq ft)", "labor_hours_min": 5.0, "labor_hours_max": 10.0 },
         { "code": "rust_treatment_large", "name": "Rust Removal + Treatment (Large Area 4–10 sq ft)", "labor_hours_min": 10.0, "labor_hours_max": 18.0 },
-    
-        { "code": "spot_prime_paint", "name": "Spot Prime + Paint (Blend, 1 Panel)", "labor_hours_min": 4.0, "labor_hours_max": 8.0 },
+        { "code": "spot_prime_paint_1_panel", "name": "Spot Prime + Paint (Blend, 1 Panel)", "labor_hours_min": 4.0, "labor_hours_max": 8.0 },
         { "code": "panel_paint_single", "name": "Paint Refinish (Single Panel, Base/Clear)", "labor_hours_min": 4.0, "labor_hours_max": 10.0 },
-        { "code": "panel_paint_blend_adjacent", "name": "Blend Adjacent Panel (each)", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
-    
+        { "code": "panel_blend_adjacent_each", "name": "Blend Adjacent Panel (each)", "labor_hours_min": 2.0, "labor_hours_max": 5.0 },
         { "code": "roof_refinish", "name": "Roof Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 8.0, "labor_hours_max": 16.0 },
         { "code": "hood_refinish", "name": "Hood Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
         { "code": "trunk_refinish", "name": "Trunk / Liftgate Refinish (Sand/Prime/Paint/Clear)", "labor_hours_min": 6.0, "labor_hours_max": 14.0 },
-    
         { "code": "full_vehicle_scuff_shoot", "name": "Full Vehicle Scuff & Shoot (Minimal Bodywork)", "labor_hours_min": 30.0, "labor_hours_max": 60.0 },
         { "code": "full_vehicle_prep_paint", "name": "Full Vehicle Prep + Paint (Good Condition Refinish)", "labor_hours_min": 50.0, "labor_hours_max": 100.0 },
         { "code": "full_restoration_paint", "name": "Full Vehicle Bodywork + Paint (Rust/Repair Intensive)", "labor_hours_min": 90.0, "labor_hours_max": 200.0 },
-    
-        { "code": "masking_setup", "name": "Masking / Setup (Add-On)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
-        { "code": "color_sand_buff", "name": "Color Sand & Buff (Add-On)", "labor_hours_min": 4.0, "labor_hours_max": 12.0 },
-    
-        { "code": "bumper_refinish", "name": "Bumper Refinish (each)", "labor_hours_min": 3.0, "labor_hours_max": 7.0 },
-        { "code": "dent_repair_small", "name": "Dent Repair (Small, no paint)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
-        { "code": "dent_repair_med", "name": "Dent Repair (Medium, with filler/prep)", "labor_hours_min": 3.0, "labor_hours_max": 8.0 }
+        { "code": "masking_setup_addon", "name": "Masking / Setup (Add-On)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
+        { "code": "color_sand_buff_addon", "name": "Color Sand & Buff (Add-On)", "labor_hours_min": 4.0, "labor_hours_max": 12.0 },
+        { "code": "bumper_refinish_each", "name": "Bumper Refinish (each)", "labor_hours_min": 3.0, "labor_hours_max": 7.0 },
+        { "code": "dent_repair_small_no_paint", "name": "Dent Repair (Small, no paint)", "labor_hours_min": 1.0, "labor_hours_max": 3.0 },
+        { "code": "dent_repair_medium_with_prep", "name": "Dent Repair (Medium, with filler/prep)", "labor_hours_min": 3.0, "labor_hours_max": 8.0 }
       ]
-    }   
+    }
   ]
 }
