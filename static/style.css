@@ -132,3 +132,60 @@ button:hover{filter:brightness(1.05)}
   margin-top:8px;
 }
 
+/* ===============================
+   Production polish additions
+   =============================== */
+
+/* Side-by-side buttons on desktop, stacked on mobile */
+.actions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.actions button{
+  flex:1;
+  min-width:180px;
+}
+
+/* Status box styling using app.js: statusBox.dataset.kind = ok|error|info */
+.status{
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.05);
+  border-radius:14px;
+  padding:12px;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  line-height:1.35;
+}
+
+/* Default/info */
+.status[data-kind="info"]{
+  border-color:rgba(255,255,255,.14);
+}
+
+/* Success */
+.status[data-kind="ok"]{
+  border-color:rgba(46, 213, 115, 0.45);
+  background:rgba(46, 213, 115, 0.10);
+}
+
+/* Error */
+.status[data-kind="error"]{
+  border-color:rgba(255, 71, 87, 0.55);
+  background:rgba(255, 71, 87, 0.10);
+}
+
+/* Make signature clear button match Clear Fields style */
+#sigClearBtn{
+  padding:10px 14px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,0.15);
+  background:rgba(255,255,255,0.06);
+  color:#fff;
+  cursor:pointer;
+  box-shadow:none;
+}
+#sigClearBtn:hover{
+  background:rgba(255,255,255,0.10);
+}
