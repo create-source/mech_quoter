@@ -1,3 +1,44 @@
+function $(id) {
+  return document.getElementById(id);
+}
+
+// Only attach listeners after DOM exists
+window.addEventListener("DOMContentLoaded", () => {
+  try {
+    initUI();
+  } catch (e) {
+    console.error(e);
+    const box = $("statusBox");
+    if (box) box.textContent = `UI init failed: ${e.message}`;
+  }
+});
+
+function must(id) {
+  const el = $(id);
+  if (!el) throw new Error(`Missing element #${id} in index.html`);
+  return el;
+}
+
+async function initUI() {
+  // ✅ ONLY reference elements that exist in the simplified UI
+  const yearSel     = must("year");
+  const makeSel     = must("make");
+  const modelSel    = must("model");
+  const categorySel = must("category");
+  const serviceSel  = must("service");
+  const laborHours  = must("laborHours");
+  const partsPrice  = must("partsPrice");
+  const laborRate   = must("laborRate");
+  const notes       = must("notes");
+  const estimateBtn = must("estimateBtn");
+
+  estimateBtn.addEventListener("click", async () => {
+    // your estimate logic here...
+  });
+
+  // load years, makes, models, categories, services...
+}
+
 const $ = (id) => document.getElementById(id);
 
 let catalog = null;
