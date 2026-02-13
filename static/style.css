@@ -231,10 +231,16 @@ button.ghost:hover,
 }
 .modal.hidden { display: none; }
 .modal { position: fixed; inset: 0; z-index: 9999; }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 1;              /* ADD THIS */
+}
 
 .modal-card {
   position: relative;
+  z-index: 2;              /* ADD THIS */
   width: min(92vw, 720px);
   margin: 8vh auto 0;
   background: #111;
