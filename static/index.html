@@ -166,6 +166,66 @@
       });
     }
   </script>
-  
+  <!-- Confirm Modal -->
+<div id="confirmModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop" id="confirmBackdrop"></div>
+
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <button class="modal-close" id="confirmXBtn" aria-label="Close">×</button>
+
+    <h2 id="confirmTitle">Confirm</h2>
+    <p class="muted">Does the customer agree with the estimate?</p>
+
+    <label class="check">
+      <input type="checkbox" id="customerAgreesChk" checked>
+      Customer agrees
+    </label>
+
+    <div class="row">
+      <p class="muted" style="margin:0 0 6px;">Do you want the customer’s signature?</p>
+      <div class="radio-row">
+        <label class="radio">
+          <input type="radio" name="wantSig" value="yes" checked>
+          Yes
+        </label>
+        <label class="radio">
+          <input type="radio" name="wantSig" value="no">
+          No
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button id="confirmAddBtn" type="button" class="btn primary">Add</button>
+      <button id="confirmCloseBtn" type="button" class="btn secondary">Close</button>
+    </div>
+
+    <div id="confirmMsg" class="msg"></div>
+  </div>
+</div>
+
+<!-- Signature Modal -->
+<div id="sigModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop" id="sigBackdrop"></div>
+
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sigTitle">
+    <button class="modal-close" id="sigXBtn" aria-label="Close">×</button>
+
+    <h2 id="sigTitle">Customer Signature</h2>
+    <p class="muted">Please sign below, then tap OK.</p>
+
+    <div class="sig-wrap">
+      <canvas id="sigCanvas" width="600" height="220"></canvas>
+    </div>
+
+    <div class="modal-actions">
+      <button id="sigClearBtn" type="button" class="btn secondary">Clear</button>
+      <button id="sigOkBtn" type="button" class="btn primary">OK</button>
+    </div>
+
+    <div id="sigMsg" class="msg"></div>
+  </div>
+</div>
+
 </body>
 </html>
