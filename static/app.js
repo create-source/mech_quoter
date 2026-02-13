@@ -55,6 +55,13 @@ const sigClearBtn = $("sigClearBtn");
 const customerNameEl = $("customerName");
 const customerPhoneEl = $("customerPhone");
 
+// ===== Confirm Modal Elements =====
+const confirmModal = $("confirmModal");
+
+function openConfirmModal() {
+  openModal(confirmModal);
+}
+
 // ===============================
 // STATUS UI
 // ===============================
@@ -517,7 +524,23 @@ async function createEstimate() {
   }
 }
 
-if (estimateBtn) estimateBtn.addEventListener("click", createEstimate);
+// if (estimateBtn) estimateBtn.addEventListener("click", createEstimate);
+
+function openModal(el) {
+  el.classList.remove("hidden");
+}
+
+function closeModal(el) {
+  el.classList.add("hidden");
+}
+
+// ====== Confirm + Signature Flow ======
+if (estimateBtn) {
+  estimateBtn.addEventListener("click", async () => {
+    await createEstimate();   // run existing estimate logic first
+    openConfirmModal();       // then open confirm popup
+  });
+}
 
 // ===============================
 // DOWNLOAD PDF
